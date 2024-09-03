@@ -2,6 +2,15 @@
 - I am creating this docker image to be able to use [[https://github.com/wal-g/wal-g][wal-g]] and few custom postgres extensions. I thought, with nix dockerTools, i could make this easier, well.. we'll see. (for both arm and amd)
 - While using dockerTools directly with nix packages is mostly OK, I am facing some issues w getting it running with ~buildLayeredImage.fromImage~. The official postgres images does comes with a lot of bells and whistles which I'd like to re-use rather than run those myself, do using ~pullImage~ is useful to me.
   - But I am facing the following issue
+    #+begin_src bash
+λ just docker-build # success
+λ just docker-load # success
+λ just docker-run # fail
+exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
+error: Recipe `docker-run` failed on line 36 with exit code 1
+
+
+    #+end_src
 ** Todo/Checklist
 - [ ] Make basic postgres run via dockerTools pullImage
 - [ ] Install ~wal-g~ via nixpkgs make sure it's accessible via postgres ~archive_command~ (seems straightforward) once we have postgres running (which currently am not able to)
