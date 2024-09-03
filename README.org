@@ -6,24 +6,37 @@ Deploying postgres on containers is [[https://www.reddit.com/r/PostgreSQL/commen
 
 How to deploy, how to add a connection pooler etc. are concerns which are out of the scope of this repo at the moment. I'll keep this document focused on "how to setup WAL archival using WAL-G" when running postgres in a container.
 #+end_quote
-** What's the problem
-- First of all, I am
-- I am creating this docker image to be able to use [[https://github.com/wal-g/wal-g][wal-g]] and few custom postgres extensions. I thought, with nix dockerTools, i could make this easier, well.. we'll see. (for both arm and amd)
-- While using dockerTools directly with nix packages is mostly OK, I am facing some issues w getting it running with ~buildLayeredImage.fromImage~. The official postgres images does comes with a lot of bells and whistles which I'd like to re-use rather than run those myself, do using ~pullImage~ is useful to me.
-  - But I am facing the following issue
-** Todo/Checklist
-- [ ] Make basic postgres run via dockerTools pullImage
-- [ ] Install ~wal-g~ via nixpkgs make sure it's accessible via postgres ~archive_command~ (seems straightforward) once we have postgres running (which currently am not able to)
-- [ ] Install PG extensions from nixpkgs to the correct location in the dockerfile. (I need some help/pointers here)
-** Usage
-*** Deployment & backup
+** Context and the problem
+To give you the context, I've been happily running postgres in my homelab without a backup(who needs one anyway) but then I planned on doing a user facing side project for which I decided, will use the same pg cluster. But now, even though I'll get only 2 users it's my duty to ensure that their data remains intact despite of the unfathomable amount of fuckery i am about to unleash on my homelab servers. So, in conclusion, i need a backup.
+
+I already have one actually, ~pg_dump~ > [[https://restic.net/][restic]] > [[https://en.wikipedia.org/wiki/Backblaze][blackblaze B2]], this backs up more than just a db everyday but this is not ideal(various reasons) for a database that'll actually have a continuous flow of data. For this, you need what postgres folks call "continuous archival"(many ways to do it, see aside section below). For sqlite, there's [[https://litestream.io/][litestream]] which does the same thing pretty brilliantly.
+
+So after doing some comparison of various backup solutions/methods, i decided to do with [[https://github.com/wal-g/wal-g][wal-g]].
+
+Previously I've been running a custom docker image based on the official postgres docker image to install the required extension. Now to
+
+So now finally our problem becomes:
 #+begin_quote
+"Create a multi-arch production-ready(walg+compatibility w official image+custom extensions) postgres docker image using NixOS dockerTools AND make sure the auxiliary processes(eg. base backup shipping, cleanup etc.) are running as expected"
+#+end_quote
+** Setting up ~wal-g~
+#+begin_quote
+See the "Aside on Backup ecosystem in Postgres" on why I decided to go with wal-g. It's a stupid vibe based decision but works for me(or we'll know).
 #+end_quote
 Following are ~wal-g~ commands, what they do and when to run them.
-| wal-g command | what it does | when to run | my opinion |
-|---------------+--------------+-------------+------------|
-|               |              |             |            |
+| wal-g command | what it does    | when to run | my opinion |
+|---------------+-----------------+-------------+------------|
+| ~wal-push~      | ~archive_command~ |             |            |
 ** Other notes/references
+*** Aside on Backup ecosystem in Postgres
+Now I observe the postgres community from the sidelines and I don't think I have any "real" postgres experience, however this is what i've figured reading the manual and opinion of other folks on the interwebs.
+#+begin_quote
+"pgBackRest is more conservative and kind of reliable, wal-g is more performant, both are much better than Barman"
+
+I won't mention who said it, my real surname is ~Barman~ (check my github fr) and I am not offended.
+#+end_quote
+**** Replication vs Backup
+****
 *** Linux "user" in postgres container
 **** gosu
 *** Previous attempts
@@ -88,6 +101,8 @@ in {
 #+end_src
 
 While this seems like it works from the face of it. Unfortunately or fortunately, it doesn't. @NoobZ and @ManoftheSea from the unofficial NixOS discord channel talked me out of this and I stopped trying to make this work. If someone is interested to make this work, here is where I got stuck: "no such file or directory". I am not sure why this happened, arch is what it should be and base image is a docker image so should not be nixos fsh issues.
+
+Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
 
 #+begin_src bash
 λ just docker-build # success
