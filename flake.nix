@@ -8,7 +8,7 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = { config, pkgs, system, ... }: let
-          # # nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch arm64 --os linux
+          # nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch arm64 --os linux
           pg_arm64 = pkgs.dockerTools.pullImage {
             imageName = "postgres";
             imageDigest = "sha256:4aea012537edfad80f98d870a36e6b90b4c09b27be7f4b4759d72db863baeebb";
@@ -17,8 +17,8 @@
             finalImageTag = "16.2-bookworm";
             os = "linux";
             arch = "arm64";
+          };
 
-          # };
           # nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch amd64 --os linux
           pg_amd64 = pkgs.dockerTools.pullImage {
             imageName = "postgres";
