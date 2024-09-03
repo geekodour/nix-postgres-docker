@@ -1,0 +1,36 @@
+* nix-postgres-docker
+- I am creating this docker image to be able to use [[https://github.com/wal-g/wal-g][wal-g]] and few custom postgres extensions. I thought, with nix dockerTools, i could make this easier, well.. we'll see. (for both arm and amd)
+- While using dockerTools directly with nix packages is mostly OK, I am facing some issues w getting it running with ~buildLayeredImage.fromImage~. The official postgres images does comes with a lot of bells and whistles which I'd like to re-use rather than run those myself, do using ~pullImage~ is useful to me.
+  - But I am facing the following issue
+** Todo/Checklist
+- [ ] Make basic postgres run via dockerTools pullImage
+- [ ] Install ~wal-g~ via nixpkgs make sure it's accessible via postgres ~archive_command~ (seems straightforward) once we have postgres running (which currently am not able to)
+- [ ] Install PG extensions from nixpkgs to the correct location in the dockerfile. (I need some help/pointers here)
+** More info
+Currently I use a dockerfile like this:
+#+begin_src Dockerfile
+FROM postgres:16.2-bookworm AS builder
+
+RUN apt-get update \
+    && apt-get -y upgrade \
+    && apt-get install -y --no-install-recommends \
+    curl ca-certificates git\
+    build-essential libpq-dev postgresql-server-dev-all
+RUN update-ca-certificates
+
+WORKDIR /srv
+RUN git clone https://github.com/fboulnois/pg_uuidv7.git .
+RUN for v in `seq 16`; do pg_buildext build-$v $v; done
+
+# create tarball and checksums
+RUN cp sql/pg_uuidv7--1.5.sql . && TARGETS=$(find * -name pg_uuidv7.so) \
+  && tar -czvf pg_uuidv7.tar.gz $TARGETS pg_uuidv7--1.5.sql pg_uuidv7.control \
+  && sha256sum pg_uuidv7.tar.gz $TARGETS pg_uuidv7--1.5.sql pg_uuidv7.control > SHA256SUMS
+
+FROM postgres:16.2-bookworm AS runner
+
+COPY --from=builder /srv/pg_uuidv7.tar.gz /srv/SHA256SUMS /srv/
+COPY --from=builder /srv/${PG_MAJOR}/pg_uuidv7.so /usr/lib/postgresql/${PG_MAJOR}/lib
+COPY --from=builder /srv/pg_uuidv7.control /usr/share/postgresql/${PG_MAJOR}/extension
+COPY --from=builder /srv/pg_uuidv7--1.5.sql /usr/share/postgresql/${PG_MAJOR}/extension
+#+end_src

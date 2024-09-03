@@ -48,10 +48,5 @@ docker-manifest-push:
 
 	docker manifest push "{{ image_repo }}/{{ image_name }}:{{ image_id }}"
 
-# NOTE: this info is useful in pkgs.dockerTools.pullImage
-get-upstream-postgres-image-details:
-	nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch amd64 --os linux
-	nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch arm64 --os linux
-
 clear:
 	rm -rf ./results
