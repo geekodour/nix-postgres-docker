@@ -16,7 +16,7 @@ error: Recipe `docker-run` failed on line 36 with exit code 1
 - [ ] Install ~wal-g~ via nixpkgs make sure it's accessible via postgres ~archive_command~ (seems straightforward) once we have postgres running (which currently am not able to)
 - [ ] Install PG extensions from nixpkgs to the correct location in the dockerfile. (I need some help/pointers here)
 ** More info
-Currently I use a dockerfile like this:
+Currently I use a dockerfile like this, which I want to miograte to using dockerTools:
 #+begin_src Dockerfile
 FROM postgres:16.2-bookworm AS builder
 
