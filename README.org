@@ -7,28 +7,40 @@ Deploying postgres on containers is [[https://www.reddit.com/r/PostgreSQL/commen
 How to deploy, how to add a connection pooler etc. are concerns which are out of the scope of this repo at the moment. I'll keep this document focused on "how to setup WAL archival using WAL-G" when running postgres in a container.
 #+end_quote
 ** Context and the problem
-To give you the context, I've been happily running postgres in my homelab without a backup(who needs one anyway) but then I planned on doing a user facing side project for which I decided, will use the same pg cluster. But now, even though I'll get only 2 users it's my duty to ensure that their data remains intact despite of the unfathomable amount of fuckery i am about to unleash on my homelab servers. So, in conclusion, i need a backup.
+To give you the context, I've been happily running postgres in my homelab without a backup(who needs one anyway) but then I planned on doing a user facing side project for which I decided, will use the same pg cluster. But now, even though I'll get only 2 users it's my duty to ensure that their data remains intact despite of the unfathomable amount of fuckery i am about to unleash on my homelab servers. So, in conclusion, i need a backup policy for the database.
 
-I already have one actually, ~pg_dump~ > [[https://restic.net/][restic]] > [[https://en.wikipedia.org/wiki/Backblaze][blackblaze B2]], this backs up more than just a db everyday but this is not ideal(various reasons) for a database that'll actually have a continuous flow of data. For this, you need what postgres folks call "continuous archival"(many ways to do it, see aside section below). For sqlite, there's [[https://litestream.io/][litestream]] which does the same thing pretty brilliantly.
+I already have one actually, ~pg_dump~ > [[https://restic.net/][restic]] > [[https://en.wikipedia.org/wiki/Backblaze][blackblaze B2]], this backs up more than just a db though. But, it is not ideal(various reasons) for a database that'll have a continuous flow of writes to it. For this, you need what postgres folks call "[[https://www.postgresql.org/docs/current/continuous-archiving.html][continuous archival]]" (many ways to do it, see aside section below). For sqlite, there's [[https://litestream.io/][litestream]] which does a similar thing pretty brilliantly.
 
-So after doing some comparison of various backup solutions/methods, i decided to do with [[https://github.com/wal-g/wal-g][wal-g]].
+So after doing some comparison of various backup solutions/methods, i decided to do with [[https://github.com/wal-g/wal-g][wal-g]]. You could actually do it without any 3rd party tool but they definitely help. (See below for comparison)
 
-Previously I've been running a custom docker image based on the official postgres docker image to install the required extension. Now to
+Previously I've been running a custom docker image based on the official postgres docker image to install the required extension. It'd be nice to extend it! In case of ~wal-g~, the running postgres service([[https://www.interdb.jp/pg/pgsql09/10.html][archiver (background) process]]) needs to call ~wal-g~ from the [[https://www.postgresql.org/docs/current/runtime-config-wal.html#GUC-ARCHIVE-COMMAND][archive_command]] postgres configuration. (This gets triggered every-time there's a new ~WAL segment~, which can in-turn be triggered by setting ~archive_timeout~ in case your db doesn't make enough commits to generate a new ~WAL segment~ but you still want continuous archival). Basically, you need ~wal-g~ and ~postgres~ in the same runtime and be callable(~$PATH~).
+
+Now to get ~wal-g~ running I just need to install ~wal-g~ into the docker image(that I have already), that's a ~apt-get~. Simple right? Yes! There are even some [[https://github.com/wal-g/wal-g/issues/473][off the shelf]] [[https://github.com/stephane-klein/playground-postgresql-walg/blob/60c483c7675899bdf3a4ad3f0d7627f3998432b8/docker-image/postgres-with-wal-g/Dockerfile#L20][community]] [[https://hub.docker.com/r/apkawa/wal-g][repos]] online for this exact usecase.
+
+But I am stupid, so I decide to make my life harder. I have rest of my infra wired nicely in [[https://zero-to-nix.com/concepts/flakes][nix flakes]] and I run things on an arm machine and also locally(x86), so I thought to myself it'd be really nice to have "most" things in a flake. Honestly would've gone the first way if I knew doing it the nix way would put me in the trenches.
 
 So now finally our problem becomes:
 #+begin_quote
 "Create a multi-arch production-ready(walg+compatibility w official image+custom extensions) postgres docker image using NixOS dockerTools AND make sure the auxiliary processes(eg. base backup shipping, cleanup etc.) are running as expected"
 #+end_quote
-** Setting up ~wal-g~
+** Solution
+*** Creating the docker image / Breakdown of postgres docker image.
 #+begin_quote
-See the "Aside on Backup ecosystem in Postgres" on why I decided to go with wal-g. It's a stupid vibe based decision but works for me(or we'll know).
+I initially attempted to base off the official postgres docker image, this was not successful. So the alternative is building the image directly from Nix definitions. [[https://xeiaso.net/talks/2024/nix-docker-build/][This is usually pretty simple]], but for postgres things are a bit complicated you need the postgres user, postgres has initdb scripts, the official image makes use of [[https://github.com/tianon/gosu][gosu]] etc which I don't properly understand. I really didn't want to open this pandora's box, it'll take my time with no clear ROI. But guess I did it anyway.
 #+end_quote
+**** Step 1: Write the steps
+**** Step 2: Breakdown official postgres image
+- For this we'll be dissecting [[https://hub.docker.com/layers/library/postgres/16.2-bookworm/images/sha256-07572430dbcd821f9f978899c3ab3a727f5029be9298a41662e1b5404d5b73e0][postgres:16.2-bookworm]] as that's the one I've been using so far.
+*** Setting up ~wal-g~
 Following are ~wal-g~ commands, what they do and when to run them.
 | wal-g command | what it does    | when to run | my opinion |
 |---------------+-----------------+-------------+------------|
 | ~wal-push~      | ~archive_command~ |             |            |
+**** Running auxalary services
+- These would ideally go as systemd services
+- [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][Express inter-job dependencies with init tasks | Nomad | HashiCorp Developer]]
 ** Other notes/references
-*** Aside on Backup ecosystem in Postgres
+*** TODO Aside on Backup ecosystem in Postgres
 Now I observe the postgres community from the sidelines and I don't think I have any "real" postgres experience, however this is what i've figured reading the manual and opinion of other folks on the interwebs.
 #+begin_quote
 "pgBackRest is more conservative and kind of reliable, wal-g is more performant, both are much better than Barman"
@@ -37,7 +49,7 @@ I won't mention who said it, my real surname is ~Barman~ (check my github fr) an
 #+end_quote
 **** Replication vs Backup
 ****
-*** Linux "user" in postgres container
+*** TODO Linux "user" in postgres container
 **** gosu
 *** Previous attempts
 **** Creating normal Dockerfile (official docker image)
