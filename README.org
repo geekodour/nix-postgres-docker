@@ -28,9 +28,23 @@ So now finally our problem becomes:
 #+begin_quote
 I initially attempted to base off the official postgres docker image, this was not successful. So the alternative is building the image directly from Nix definitions. [[https://xeiaso.net/talks/2024/nix-docker-build/][This is usually pretty simple]], but for postgres things are a bit complicated you need the postgres user, postgres has initdb scripts, the official image makes use of [[https://github.com/tianon/gosu][gosu]] etc which I don't properly understand. I really didn't want to open this pandora's box, it'll take my time with no clear ROI. But guess I did it anyway.
 #+end_quote
-**** Step 1: Write the steps
-**** Step 2: Breakdown official postgres image
+**** Step 0: Do it without ~dockerTools~ / ~flakes~
+#+begin_quote
+This is the backup of me not being able to get to the desired outcome in time.
+#+end_quote
+At the time of the writing I am unsure how long it'll take. So as a backup, I'll create a straightforward Dockerfile with WAL-G with relevant scripts backed in. This is actually the final result I want, doing it via ~dockerTools~ is the sidequest but if sidequest works out, we shall use it.
+**** Step 1: Write the steps for sidequest
+- [ ] Breakdown official postgres image
+- [ ] Use [[https://ryantm.github.io/nixpkgs/builders/images/dockertools/][dockerTools]] to create a basic postgres image based on nixpkgs postgres
+- [ ] Add the scripts/relevant settings from the official repo and adapt them to ~dockerTools~.
+- [ ] Add extensions, this is pretty simple with nix!
+- [ ] Add WAL-G and relevant scripts to be trigger at archival and restore and periodic. (document them aswell)
+- [ ] Do a test run
+- [ ] Cleanup this repo
+- [ ] Go to sleep
+**** Step 3: Breakdown official postgres image
 - For this we'll be dissecting [[https://hub.docker.com/layers/library/postgres/16.2-bookworm/images/sha256-07572430dbcd821f9f978899c3ab3a727f5029be9298a41662e1b5404d5b73e0][postgres:16.2-bookworm]] as that's the one I've been using so far.
+- I couldn't find the dockerfile for 16.2 but here's [[https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile][the dockerfile for 16.4]] which we'll unpack and re-pack into our ~dockerTools~ flake.
 *** Setting up ~wal-g~
 Following are ~wal-g~ commands, what they do and when to run them.
 | wal-g command | what it does    | when to run | my opinion |

@@ -11,14 +11,14 @@
         in
         {
           packages = {
-            nix_postgres_docker_raw = let
-              myPostgres = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
+            nix_postgres_docker = let
+              pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
             in pkgs.dockerTools.buildLayeredImage  {
-              name = "myPostgres";
-              tag = "myTag";
-              contents = [pkgs.cacert myPostgres];
+              name = builtins.getEnv "IMAGE_NAME";
+              tag = builtins.getEnv "IMAGE_TAG";
+              contents = [pkgs.cacert pg];
               config = {
-                Cmd = ["${myPostgres}/bin/postgres"];
+                Cmd = ["${pg}/bin/postgres"];
               };
             };
           };
