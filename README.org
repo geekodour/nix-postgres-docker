@@ -1,4 +1,6 @@
 * nix-postgres-docker
+NOTE: wip, i am still writing this out. brb doing side quests
+
 #+begin_quote
 While I think I should use a managed pg or one of those baked distributions already, I also think selfhosting pg for my homelab has taught me many lessons that I wouldn't learn otherwise, so I guess we shall continue doing so "for now". (that too in a container)
 
@@ -28,11 +30,14 @@ So now finally our problem becomes:
 #+begin_quote
 I initially attempted to base off the official postgres docker image, this was not successful. So the alternative is building the image directly from Nix definitions. [[https://xeiaso.net/talks/2024/nix-docker-build/][This is usually pretty simple]], but for postgres things are a bit complicated you need the postgres user, postgres has initdb scripts, the official image makes use of [[https://github.com/tianon/gosu][gosu]] etc which I don't properly understand. I really didn't want to open this pandora's box, it'll take my time with no clear ROI. But guess I did it anyway.
 #+end_quote
-**** Step 0: Do it without ~dockerTools~ / ~flakes~
+**** TODO Step 0: Do it without ~dockerTools~ / ~flakes~
 #+begin_quote
 This is the backup of me not being able to get to the desired outcome in time.
 #+end_quote
-At the time of the writing I am unsure how long it'll take. So as a backup, I'll create a straightforward Dockerfile with WAL-G with relevant scripts backed in. This is actually the final result I want, doing it via ~dockerTools~ is the sidequest but if sidequest works out, we shall use it.
+- At the time of the writing I am unsure how long it'll take.
+- So as a backup, I'll create a straightforward Dockerfile with WAL-G with relevant scripts backed in.
+- This is actually the final result I want, doing it via ~dockerTools~ is the sidequest but if sidequest works out, we shall use it.
+- This lives in the ~./normalDockerfile~ directory.
 **** Step 1: Write the steps for sidequest
 - [ ] Breakdown official postgres image
 - [ ] Use [[https://ryantm.github.io/nixpkgs/builders/images/dockertools/][dockerTools]] to create a basic postgres image based on nixpkgs postgres
@@ -64,6 +69,7 @@ I won't mention who said it, my real surname is ~Barman~ (check my github fr) an
 **** Replication vs Backup
 ****
 *** TODO Linux "user" in postgres container
+Update: writing another blogpost
 **** gosu
 *** Previous attempts
 **** Creating normal Dockerfile (official docker image)

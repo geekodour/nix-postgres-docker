@@ -16,6 +16,7 @@
             in pkgs.dockerTools.buildLayeredImage  {
               name = builtins.getEnv "IMAGE_NAME";
               tag = builtins.getEnv "IMAGE_TAG";
+              created = "now";
               contents = [pkgs.cacert pg];
               config = {
                 Cmd = ["${pg}/bin/postgres"];
