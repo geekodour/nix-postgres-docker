@@ -13,9 +13,6 @@ permissions:
   contents: read  # This is required for actions/checkout
 
 env:
-  # NOTE: We're not using versioned images (simply using :latest tag) as having
-  #       just the latest version is sufficient for now.
-  # IMAGE_TAG: ${{ github.sha }}
   IMAGE_TAG: 16_2
 
 jobs:

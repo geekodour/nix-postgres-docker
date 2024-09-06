@@ -54,6 +54,12 @@
               contents = with pkgs; [
                 cacert
                 wal-g
+                (pkgs.writeTextFile {
+                  name = "archive_command.sh";
+                  destination = "/opt/local/bin/archive_command.sh";
+                  text = builtins.readFile ./scripts/walg/archive_command.sh;
+                  executable = true;
+                })
               ];
               config = {
                 Entrypoint = [ "docker-entrypoint.sh" ];

@@ -83,7 +83,6 @@ Now I observe the postgres community from the sidelines and I don't think I have
 I won't mention who said it, my real surname is ~Barman~ (check my github fr) and I am not offended.
 #+end_quote
 **** Replication vs Backup
-****
 *** Previous attempts
 **** Creating normal Dockerfile (official docker image)
 This image has a extension that i use but doesn't have wal-g in it.
@@ -152,6 +151,9 @@ Update!
 I think i've found the issue, it's related to the shebang on top of the entrypoint file but eitheway I have dropped the idea of using ~fromImage~ for now and going all in on building it from nix derivations.
 
 [[https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130][Inconsistent treatment of /usr/bin/env in build sandbox vs. NixOS · Issue #1205 · NixOS/nix · GitHub]]
+
+Update 2!
+Because I was having difficulty building pg16.2 from nixpkgs, I ended up using this approach as I had an exsiting db using pg16.2 and I faced a [[https://community.fly.io/t/postgres-flex-database-postgres-has-a-collation-version-mismatch/14391][collation]] issue due to glibc version and I didn't want to REINDEX yet.
 #+end_quote
 
 Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
