@@ -49,6 +49,8 @@
 
               mkdir -m 0755 -p /usr/bin
               ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
+              ln -sfn "${pkgs.coreutils}/bin/true" /usr/bin/true
+              ln -sfn "${pkgs.wal-g}/bin/wal-g" /usr/bin/wal-g
               '';
               enableFakechroot = true;
               contents = with pkgs; [

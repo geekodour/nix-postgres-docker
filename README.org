@@ -166,3 +166,20 @@ exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
 error: Recipe `docker-run` failed on line 36 with exit code 1
 #+end_src
 :(
+*** Everything works ~archive_comman~ fails
+- wa-g
+- normal cp
+- /bin/true
+- archive_command = 'echo test > /tmp/archive_test.txt'
+- final boss strace
+  - before this see if official image is working
+  - sudo strace -f -p $(head -1 /var/lib/postgresql/data/postmaster.pid) -s 1024 -o /tmp/postgres_strace.log
+  - sudo strace -f -p 1049463 -s 1024 -o /tmp/postgres_strace.log
+    - SELECT pg_switch_wal();
+#+begin_src
+1053745 execve("/bin/sh", ["sh", "-c", "true"], 0xaaaaecdfef10 /* 65 vars */ <unfinished ...>
+1053746 close(3)                        = 0
+1053745 <... execve resumed>)           = -1 ENOENT (No such file or directory)
+1053746 signalfd4(-1, [URG], 8, SFD_CLOEXEC|SFD_NONBLOCK <unfinished ...>
+1053745 exit_group(127)                 = ?
+#+end_src
