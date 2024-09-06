@@ -1,10 +1,11 @@
 {
   inputs = {
+    nixpkgs-old.url = "github:NixOS/nixpkgs/nixos-23.11";
     nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
     flake-parts = { url = "github:hercules-ci/flake-parts"; inputs.nixpkgs-lib.follows = "nixpkgs"; };
   };
 
-  outputs = inputs@{ flake-parts, self, ... }:
+  outputs = inputs@{ flake-parts, self, nixpkgs-old, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = { config, pkgs, system, ... }: let
@@ -14,6 +15,7 @@
             # NOTE: This is based on the official 16.4 postgres dockerfile
             #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
             nix_postgres_docker = let
+              pkgs = nixpkgs-old.legacyPackages.${system}; # comment if not needed
               pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
             in pkgs.dockerTools.buildLayeredImage  {
                 name = builtins.getEnv "IMAGE_NAME";
@@ -36,6 +38,7 @@
                 enableFakechroot = true;
                 contents = [
                   # pkgs.neovim # uncomment for debugging
+
                   pg
                   pkgs.cacert
                   pkgs.bashInteractive
@@ -47,6 +50,7 @@
                   pkgs.nss
                   pkgs.zstd
                   pkgs.xz
+
 
                   pkgs.wal-g
 
@@ -73,13 +77,22 @@
                 # config come from the docker spec
                 # https://github.com/moby/moby/blob/46f7ab808b9504d735d600e259ca0723f76fb164/image/spec/spec.md#image-json-field-descriptions
                 config = {
-                  #Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
+                  # Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
                   Entrypoint = ["/usr/local/bin/docker-entrypoint.sh"];
                   Cmd = ["postgres"];
                   Env = [
                     "PGDATA=/var/lib/postgresql/data"
                     "LANG=en_US.utf8"
+                    # NOTE: apparently glibcLocalesUtf8 and glibcLocales is same
                     # see https://discourse.nixos.org/t/build-postgres-with-support-for-locale-en-us-utf-8/45027
+                    #
+                    # NOTE: Upon running we're getting the following error
+                    # WARNING:  database "<name>" has a collation version mismatch
+                    # DETAIL:  The database was created using collation version 2.36, but the operating system provides version 2.39.
+                    # HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE <name> REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+                    #
+                    # This is because previous postgres was built with a different glic version.
+                    #
                     "LOCALE_ARCHIVE=${
                       (pkgs.glibcLocalesUtf8.override {
                         allLocales = false;
