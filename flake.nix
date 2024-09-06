@@ -11,6 +11,8 @@
         in
         {
           packages = {
+            # NOTE: This is based on the official 16.4 postgres dockerfile
+            #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
             nix_postgres_docker = let
               pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
             in pkgs.dockerTools.buildLayeredImage  {
@@ -45,6 +47,8 @@
                   pkgs.nss
                   pkgs.zstd
                   pkgs.xz
+
+                  pkgs.wal-g
 
                   (pkgs.writeTextFile {
                     name = "docker-ensure-initdb.sh";

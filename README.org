@@ -39,29 +39,40 @@ This is the backup of me not being able to get to the desired outcome in time.
 - This is actually the final result I want, doing it via ~dockerTools~ is the sidequest but if sidequest works out, we shall use it.
 - This lives in the ~./normalDockerfile~ directory.
 **** Step 1: Write the steps for sidequest
-- [ ] Breakdown official postgres image
-- [ ] Use [[https://ryantm.github.io/nixpkgs/builders/images/dockertools/][dockerTools]] to create a basic postgres image based on nixpkgs postgres
-- [ ] Add the scripts/relevant settings from the official repo and adapt them to ~dockerTools~.
-- [ ] Add extensions, this is pretty simple with nix!
+- [X] Breakdown official postgres image
+- [X] Use [[https://ryantm.github.io/nixpkgs/builders/images/dockertools/][dockerTools]] to create a basic postgres image based on nixpkgs postgres
+- [X] Add the scripts/relevant settings from the official repo and adapt them to ~dockerTools~.
+- [X] Add extensions, this is pretty simple with nix!
 - [ ] Add WAL-G and relevant scripts to be trigger at archival and restore and periodic. (document them aswell)
 - [ ] Do a test run
 - [ ] Cleanup this repo
 - [ ] Go to sleep
-**** Step 3: Breakdown official postgres image
-- For this we'll be dissecting [[https://hub.docker.com/layers/library/postgres/16.2-bookworm/images/sha256-07572430dbcd821f9f978899c3ab3a727f5029be9298a41662e1b5404d5b73e0][postgres:16.2-bookworm]] as that's the one I've been using so far.
-- I couldn't find the dockerfile for 16.2 but here's [[https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile][the dockerfile for 16.4]] which we'll unpack and re-pack into our ~dockerTools~ flake.
-*** dockerTools
-**** Use of gosu
-- The official image makes use of gosu in the runtime entry point
-  - It does many things which might need root access before the main prostgres process starts
-  - For that reason using gosu is more pref. here than using User or USER but you do still need to create the postgres user.
 *** Setting up ~wal-g~
+#+begin_quote
+Gitlab has an amazing runbook for wal-g
+- https://gitlab.com/gitlab-com/runbooks/-/blob/master/docs/patroni/postgresql-backups-wale-walg.md
+- https://archive.ph/83BLw
+#+end_quote
+I run my services in a nomad cluster, so there might be some context around it but I'll try to keep things generic.
+
 Following are ~wal-g~ commands, what they do and when to run them.
-| wal-g command | what it does    | when to run | my opinion |
-|---------------+-----------------+-------------+------------|
-| ~wal-push~      | ~archive_command~ |             |            |
+| context     | wal-g command | what it does                                                       | when to run        | my opinion |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
+| base-backup | ~backup-list~   | List of successful "base backups", also will have delta backups    | manually, to check |            |
+|             |               | ~backup-list --detail --pretty~ is useful as-well                    |                    |            |
+|             | ~backup-fetch~  |                                                                    |                    |            |
+|             | ~backup-push~   | Create a full ~$PGDATA~ backup                                       |                    |            |
+|             |               | ~backup-push~ will decide on it's own when to do delta or full       |                    |            |
+|             | ~delete~        | ???                                                                |                    |            |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
+| wal         | ~wal-fetch~     | fetches WALs as part of ~restore_command~                            | never run manually |            |
+|             | ~wal-push~      | pushes WALs as part of ~archive_command~                             | never run manually |            |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
+| replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~ |                    |            |
+|             | ~catchup-*~     | I haven't explored these yet                                       |                    |            |
 **** Running auxalary services
 - These would ideally go as systemd services
+- If WAL shipping (archive_command) fails for some reason, WAL files will be kept on the server until the disk is running full!
 - [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][Express inter-job dependencies with init tasks | Nomad | HashiCorp Developer]]
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres
@@ -73,9 +84,6 @@ I won't mention who said it, my real surname is ~Barman~ (check my github fr) an
 #+end_quote
 **** Replication vs Backup
 ****
-*** TODO Linux "user" in postgres container
-Update: writing another blogpost
-**** gosu
 *** Previous attempts
 **** Creating normal Dockerfile (official docker image)
 This image has a extension that i use but doesn't have wal-g in it.
@@ -138,6 +146,13 @@ in {
 #+end_src
 
 While this seems like it works from the face of it. Unfortunately or fortunately, it doesn't. @NoobZ and @ManoftheSea from the unofficial NixOS discord channel talked me out of this and I stopped trying to make this work. If someone is interested to make this work, here is where I got stuck: "no such file or directory". I am not sure why this happened, arch is what it should be and base image is a docker image so should not be nixos fsh issues.
+
+#+begin_quote
+Update!
+I think i've found the issue, it's related to the shebang on top of the entrypoint file but eitheway I have dropped the idea of using ~fromImage~ for now and going all in on building it from nix derivations.
+
+[[https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130][Inconsistent treatment of /usr/bin/env in build sandbox vs. NixOS · Issue #1205 · NixOS/nix · GitHub]]
+#+end_quote
 
 Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
 
