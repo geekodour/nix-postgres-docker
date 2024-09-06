@@ -3,13 +3,13 @@
     # NOTE: downgrading because 16.4 using glibc 2.39 and 16.2 uses 2.36 i have
     #       vulnerable machines which are still running 16.2
     # see https://github.com/NixOS/nixpkgs/commit/30fa4dca882a91a18629fb93b31f8c4ee79285c8
-    nixpkgs-old.url = "github:NixOS/nixpkgs/30fa4dca882a91a18629fb93b31f8c4ee79285c8";
+    nixpkgs.url = "github:NixOS/nixpkgs/30fa4dca882a91a18629fb93b31f8c4ee79285c8";
     # nixpkgs.url = "github:NixOS/nixpkgs/nixos-24.05";
 
-    flake-parts = { url = "github:hercules-ci/flake-parts"; inputs.nixpkgs-lib.follows = "nixpkgs-old"; };
+    flake-parts = { url = "github:hercules-ci/flake-parts"; inputs.nixpkgs-lib.follows = "nixpkgs"; };
   };
 
-  outputs = inputs@{ flake-parts, self, nixpkgs-old, ... }:
+  outputs = inputs@{ flake-parts, self, nixpkgs, ... }:
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = { config, pkgs, system, ... }: let
@@ -20,7 +20,7 @@
             #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
             nix_postgres_docker = let
               # pkgs = nixpkgs-old.legacyPackages.${system}; # comment if not needed
-              pkgs = nixpkgs-old.legacyPackages.${system};
+              # pkgs = nixpkgs.legacyPackages.${system};
               pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
             in pkgs.dockerTools.buildLayeredImage  {
                 name = builtins.getEnv "IMAGE_NAME";

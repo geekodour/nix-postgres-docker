@@ -3,7 +3,7 @@
     "flake-parts": {
       "inputs": {
         "nixpkgs-lib": [
-          "nixpkgs-old"
+          "nixpkgs"
         ]
       },
       "locked": {
@@ -20,7 +20,7 @@
         "type": "github"
       }
     },
-    "nixpkgs-old": {
+    "nixpkgs": {
       "locked": {
         "lastModified": 1712212879,
         "narHash": "sha256-6Tbs9Du+TVrnaNek2NyO/DWVKejk7VJcH4nk0iBm6YQ=",
@@ -39,7 +39,7 @@
     "root": {
       "inputs": {
         "flake-parts": "flake-parts",
-        "nixpkgs-old": "nixpkgs-old"
+        "nixpkgs": "nixpkgs"
       }
     }
   },
