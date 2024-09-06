@@ -36,7 +36,10 @@
               tag = builtins.getEnv "IMAGE_TAG";
               # fromImage = pg_amd64; # TODO make conditional
               fromImage = if system == "x86_64-linux" then pg_amd64 else pg_arm64;
-              # NOTE /bin/env patch
+              # NOTE /usr/bin/env patch
+              #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
+              # NOTE /bin/sh patch
+              #      because of this archive_command was failing in the modified container image
               #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
               fakeRootCommands = ''
               ${pkgs.dockerTools.shadowSetup}
@@ -49,13 +52,14 @@
 
               mkdir -m 0755 -p /usr/bin
               ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
-              ln -sfn "${pkgs.coreutils}/bin/true" /usr/bin/true
-              ln -sfn "${pkgs.wal-g}/bin/wal-g" /usr/bin/wal-g
+
+              ln -sfn "${pkgs.bash}/bin/sh" /bin/sh
               '';
               enableFakechroot = true;
               contents = with pkgs; [
                 cacert
                 wal-g
+                # bash
                 (pkgs.writeTextFile {
                   name = "archive_command.sh";
                   destination = "/opt/local/bin/archive_command.sh";

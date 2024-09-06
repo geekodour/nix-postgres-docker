@@ -175,6 +175,7 @@ error: Recipe `docker-run` failed on line 36 with exit code 1
   - before this see if official image is working
   - sudo strace -f -p $(head -1 /var/lib/postgresql/data/postmaster.pid) -s 1024 -o /tmp/postgres_strace.log
   - sudo strace -f -p 1049463 -s 1024 -o /tmp/postgres_strace.log
+    - docker inspect -f '{{.State.Pid}}' <container id>
     - SELECT pg_switch_wal();
 #+begin_src
 1053745 execve("/bin/sh", ["sh", "-c", "true"], 0xaaaaecdfef10 /* 65 vars */ <unfinished ...>
