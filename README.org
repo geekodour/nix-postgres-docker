@@ -50,6 +50,11 @@ This is the backup of me not being able to get to the desired outcome in time.
 **** Step 3: Breakdown official postgres image
 - For this we'll be dissecting [[https://hub.docker.com/layers/library/postgres/16.2-bookworm/images/sha256-07572430dbcd821f9f978899c3ab3a727f5029be9298a41662e1b5404d5b73e0][postgres:16.2-bookworm]] as that's the one I've been using so far.
 - I couldn't find the dockerfile for 16.2 but here's [[https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile][the dockerfile for 16.4]] which we'll unpack and re-pack into our ~dockerTools~ flake.
+*** dockerTools
+**** Use of gosu
+- The official image makes use of gosu in the runtime entry point
+  - It does many things which might need root access before the main prostgres process starts
+  - For that reason using gosu is more pref. here than using User or USER but you do still need to create the postgres user.
 *** Setting up ~wal-g~
 Following are ~wal-g~ commands, what they do and when to run them.
 | wal-g command | what it does    | when to run | my opinion |

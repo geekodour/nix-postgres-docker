@@ -32,8 +32,12 @@ docker-build:
 docker-load:
 	docker load < ./results/{{image_file}}
 
+# NOTE: assumes we have a dummy .data directory
 docker-run:
-	docker run --rm -it {{image_repo}}/{{image_name}}:{{image_tag}}
+	docker run --rm \
+	-v ./.data/pg_data:/var/lib/postgresql/data \
+	-e POSTGRES_PASSWORD=mysecretpassword \
+	-it {{image_repo}}/{{image_name}}:{{image_tag}}
 
 docker-push:
 	docker push {{ image_repo }}/{{image_name}}:{{image_tag}}
