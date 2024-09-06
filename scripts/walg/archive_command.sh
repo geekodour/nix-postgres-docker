@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # NOTE:
 # - This script is supposed to be run as "archive_command.sh %p", adjust postgreqsql.conf accordingly

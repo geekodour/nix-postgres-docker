@@ -62,6 +62,7 @@
                 })
               ];
               config = {
+                # Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
                 Entrypoint = [ "docker-entrypoint.sh" ];
                 Cmd = ["postgres"];
               };
