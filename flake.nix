@@ -62,6 +62,12 @@
                     text = builtins.readFile ./scripts/entrypoints/docker-entrypoint.sh;
                     executable = true;
                   })
+                  (pkgs.writeTextFile {
+                    name = "archive_command.sh";
+                    destination = "/opt/local/bin/archive_command.sh";
+                    text = builtins.readFile ./scripts/walg/archive_command.sh;
+                    executable = true;
+                  })
                 ];
 
                 # config come from the docker spec
