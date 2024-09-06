@@ -38,7 +38,7 @@
                   # pkgs.neovim # uncomment for debugging
                   pg
                   pkgs.cacert
-                  pkgs.bash
+                  pkgs.bashInteractive
                   pkgs.coreutils
                   pkgs.findutils
                   pkgs.gosu
@@ -73,14 +73,15 @@
                 # config come from the docker spec
                 # https://github.com/moby/moby/blob/46f7ab808b9504d735d600e259ca0723f76fb164/image/spec/spec.md#image-json-field-descriptions
                 config = {
-                  # Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
+                  #Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
                   Entrypoint = ["/usr/local/bin/docker-entrypoint.sh"];
                   Cmd = ["postgres"];
                   Env = [
                     "PGDATA=/var/lib/postgresql/data"
                     "LANG=en_US.utf8"
+                    # see https://discourse.nixos.org/t/build-postgres-with-support-for-locale-en-us-utf-8/45027
                     "LOCALE_ARCHIVE=${
-                      (pkgs.glibcLocales.override {
+                      (pkgs.glibcLocalesUtf8.override {
                         allLocales = false;
                         locales = ["C.UTF-8/UTF-8" "en_US.UTF-8/UTF-8"];
                       })
