@@ -1,6 +1,6 @@
 image_repo := "geekodour"
 image_name := "nix-postgres"
-image_id := "latest"
+image_id := "16_2"
 # NOTE: My current idea of building multi-arch docker images is that
 #       they should be built in respective arch rather than to
 #       emulate. Also while we could, I would want to avoid nix's idea
@@ -27,7 +27,7 @@ default:
 docker-build:
 	IMAGE_NAME={{image_repo}}/{{image_name}} IMAGE_TAG={{image_tag}} \
 	nix build -o ./results/{{image_file}} \
-	--impure --show-trace .#nix_postgres_docker
+	--impure --show-trace .#pg_{{image_id}}
 
 docker-load:
 	docker load < ./results/{{image_file}}

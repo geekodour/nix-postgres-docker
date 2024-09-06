@@ -8,13 +8,62 @@
     flake-parts.lib.mkFlake { inherit inputs; } {
       systems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = { config, pkgs, system, ... }: let
+          # nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch amd64 --os linux
+          pg_amd64 = pkgs.dockerTools.pullImage {
+            imageName = "postgres";
+            imageDigest = "sha256:4aea012537edfad80f98d870a36e6b90b4c09b27be7f4b4759d72db863baeebb";
+            sha256 = "1rizfs2f6l834cgym0jpp88g3r3mcrxn9fd58np91ny9fy29zyck";
+            finalImageName = "postgres";
+            finalImageTag = "16.2-bookworm";
+            os = "linux";
+            arch = "amd64";
+          };
+          pg_arm64 = pkgs.dockerTools.pullImage {
+            imageName = "postgres";
+            imageDigest = "sha256:4aea012537edfad80f98d870a36e6b90b4c09b27be7f4b4759d72db863baeebb";
+            sha256 = "054n4v3g8vl98i4w6rrk4kgzy3ivwx7ggjawsfi02n8r2jbar8z2";
+            finalImageName = "postgres";
+            finalImageTag = "16.2-bookworm";
+            os = "linux";
+            arch = "arm64";
+          };
         in
         {
-
           packages = {
+            pg_16_2 = let
+            in pkgs.dockerTools.buildLayeredImage  {
+              name = builtins.getEnv "IMAGE_NAME";
+              tag = builtins.getEnv "IMAGE_TAG";
+              # fromImage = pg_amd64; # TODO make conditional
+              fromImage = if system == "x86_64-linux" then pg_amd64 else pg_arm64;
+              # NOTE /bin/env patch
+              #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
+              fakeRootCommands = ''
+              ${pkgs.dockerTools.shadowSetup}
+              groupadd -r postgres
+              useradd -r -g postgres --home-dir=/var/lib/postgresql postgres
+              install --verbose --directory --owner postgres --group postgres --mode 1777 /var/lib/postgresql
+              install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql
+              install --verbose --directory --owner postgres --group postgres --mode 3777 /run/postgresql
+              mkdir /docker-entrypoint-initdb.d
+
+              mkdir -m 0755 -p /usr/bin
+              ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
+              '';
+              enableFakechroot = true;
+              contents = with pkgs; [
+                cacert
+                wal-g
+              ];
+              config = {
+                Entrypoint = [ "docker-entrypoint.sh" ];
+                Cmd = ["postgres"];
+              };
+            };
+
             # NOTE: This is based on the official 16.4 postgres dockerfile
             #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
-            nix_postgres_docker = let
+            pg_16_4 = let
               pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
             in pkgs.dockerTools.buildLayeredImage  {
                 name = builtins.getEnv "IMAGE_NAME";
