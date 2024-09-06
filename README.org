@@ -56,20 +56,20 @@ Gitlab has an amazing runbook for wal-g
 I run my services in a nomad cluster, so there might be some context around it but I'll try to keep things generic.
 
 Following are ~wal-g~ commands, what they do and when to run them.
-| context     | wal-g command | what it does                                                       | when to run        | my opinion |
-|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
-| base-backup | ~backup-list~   | List of successful "base backups", also will have delta backups    | manually, to check |            |
-|             |               | ~backup-list --detail --pretty~ is useful as-well                    |                    |            |
-|             | ~backup-fetch~  |                                                                    |                    |            |
-|             | ~backup-push~   | Create a full ~$PGDATA~ backup                                       |                    |            |
-|             |               | ~backup-push~ will decide on it's own when to do delta or full       |                    |            |
-|             | ~delete~        | ???                                                                |                    |            |
-|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
-| wal         | ~wal-fetch~     | fetches WALs as part of ~restore_command~                            | never run manually |            |
-|             | ~wal-push~      | pushes WALs as part of ~archive_command~                             | never run manually |            |
-|-------------+---------------+--------------------------------------------------------------------+--------------------+------------|
-| replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~ |                    |            |
-|             | ~catchup-*~     | I haven't explored these yet                                       |                    |            |
+| context     | wal-g command | what it does                                                       | when to run        |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+
+| base-backup | ~backup-list~   | List of successful "base backups", also will have delta backups    | manually, to check |
+|             |               | ~backup-list --detail --pretty~ is useful as-well                    |                    |
+|             | ~backup-fetch~  |                                                                    |                    |
+|             | ~backup-push~   | Create a full ~$PGDATA~ backup                                       |                    |
+|             |               | ~backup-push~ will decide on it's own when to do delta or full       |                    |
+|             | ~delete~        | ???                                                                |                    |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+
+| wal         | ~wal-fetch~     | fetches WALs as part of ~restore_command~                            | never run manually |
+|             | ~wal-push~      | pushes WALs as part of ~archive_command~                             | never run manually |
+|-------------+---------------+--------------------------------------------------------------------+--------------------+
+| replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~ |                    |
+|             | ~catchup-*~     | I haven't explored these yet                                       |                    |
 **** Running auxalary services
 - These would ideally go as systemd services
 - If WAL shipping (archive_command) fails for some reason, WAL files will be kept on the server until the disk is running full!
