@@ -34,7 +34,6 @@
             in pkgs.dockerTools.buildLayeredImage  {
               name = builtins.getEnv "IMAGE_NAME";
               tag = builtins.getEnv "IMAGE_TAG";
-              # fromImage = pg_amd64; # TODO make conditional
               fromImage = if system == "x86_64-linux" then pg_amd64 else pg_arm64;
               # NOTE /usr/bin/env patch
               #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
@@ -52,20 +51,12 @@
 
               mkdir -m 0755 -p /usr/bin
               ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
-
               ln -sfn "${pkgs.bash}/bin/sh" /bin/sh
               '';
               enableFakechroot = true;
               contents = with pkgs; [
                 cacert
                 wal-g
-                # bash
-                (pkgs.writeTextFile {
-                  name = "archive_command.sh";
-                  destination = "/opt/local/bin/archive_command.sh";
-                  text = builtins.readFile ./scripts/walg/archive_command.sh;
-                  executable = true;
-                })
               ];
               config = {
                 # Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
@@ -95,6 +86,7 @@
 
                 mkdir -m 0755 -p /usr/bin
                 ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
+                ln -sfn "${pkgs.bash}/bin/sh" /bin/sh
                 '';
                 enableFakechroot = true;
                 contents = [
@@ -111,7 +103,6 @@
                   pkgs.zstd
                   pkgs.xz
 
-
                   pkgs.wal-g
 
                   (pkgs.writeTextFile {
@@ -126,12 +117,6 @@
                     text = builtins.readFile ./scripts/entrypoints/docker-entrypoint.sh;
                     executable = true;
                   })
-                  (pkgs.writeTextFile {
-                    name = "archive_command.sh";
-                    destination = "/opt/local/bin/archive_command.sh";
-                    text = builtins.readFile ./scripts/walg/archive_command.sh;
-                    executable = true;
-                  })
                 ];
 
                 # config come from the docker spec
@@ -143,15 +128,6 @@
                   Env = [
                     "PGDATA=/var/lib/postgresql/data"
                     "LANG=en_US.utf8"
-                    # NOTE: apparently glibcLocalesUtf8 and glibcLocales is same
-                    # see https://discourse.nixos.org/t/build-postgres-with-support-for-locale-en-us-utf-8/45027
-                    #
-                    # NOTE: Upon running we're getting the following error
-                    # WARNING:  database "<name>" has a collation version mismatch
-                    # DETAIL:  The database was created using collation version 2.36, but the operating system provides version 2.39.
-                    # HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE <name> REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
-                    #
-                    # This is because previous postgres was built with a different glibc version.
                     "LOCALE_ARCHIVE=${
                       (pkgs.glibcLocalesUtf8.override {
                         allLocales = false;

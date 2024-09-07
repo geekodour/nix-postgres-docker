@@ -27,53 +27,84 @@ So now finally our problem becomes:
 #+end_quote
 ** Solution
 *** Creating the docker image / Breakdown of postgres docker image.
-#+begin_quote
-I initially attempted to base off the official postgres docker image, this was not successful. So the alternative is building the image directly from Nix definitions. [[https://xeiaso.net/talks/2024/nix-docker-build/][This is usually pretty simple]], but for postgres things are a bit complicated you need the postgres user, postgres has initdb scripts, the official image makes use of [[https://github.com/tianon/gosu][gosu]] etc which I don't properly understand. I really didn't want to open this pandora's box, it'll take my time with no clear ROI. But guess I did it anyway.
-#+end_quote
-**** TODO Step 0: Do it without ~dockerTools~ / ~flakes~
-#+begin_quote
-This is the backup of me not being able to get to the desired outcome in time.
-#+end_quote
-- At the time of the writing I am unsure how long it'll take.
-- So as a backup, I'll create a straightforward Dockerfile with WAL-G with relevant scripts backed in.
-- This is actually the final result I want, doing it via ~dockerTools~ is the sidequest but if sidequest works out, we shall use it.
-- This lives in the ~./normalDockerfile~ directory.
-**** Step 1: Write the steps for sidequest
-- [X] Breakdown official postgres image
-- [X] Use [[https://ryantm.github.io/nixpkgs/builders/images/dockertools/][dockerTools]] to create a basic postgres image based on nixpkgs postgres
-- [X] Add the scripts/relevant settings from the official repo and adapt them to ~dockerTools~.
-- [X] Add extensions, this is pretty simple with nix!
-- [ ] Add WAL-G and relevant scripts to be trigger at archival and restore and periodic. (document them aswell)
-- [ ] Do a test run
-- [ ] Cleanup this repo
-- [ ] Go to sleep
+I initially attempted to base off the official postgres docker image, this was not successful. So the alternative is building the image directly from Nix definitions. [[https://xeiaso.net/talks/2024/nix-docker-build/][This is usually pretty simple]], but for postgres things are a bit complicated you need the postgres user, postgres has initdb scripts, the official image makes use of [[https://github.com/tianon/gosu][gosu]] etc which I don't properly understand.
+
+But it was doable, I did it in two different ways:
+1. Based on official postgres docker image: Most things work nicely, but I am not sure how would I install postgres extensions to this. It will be possible just not super straightforward.
+2. Based on nixpkgs postgres: Installing ~wal-g~, installing other things along with postgres extension to the docker container is pretty straightforward.
+
+See ~./flake.nix~
+
+Additionally, github actions is setup at ~.github/workflows~ to build this image for both ~amd64~ and ~arm64~
+
 *** Setting up ~wal-g~
 #+begin_quote
 Gitlab has an amazing runbook for wal-g
 - https://gitlab.com/gitlab-com/runbooks/-/blob/master/docs/patroni/postgresql-backups-wale-walg.md
 - https://archive.ph/83BLw
-#+end_quote
-I run my services in a nomad cluster, so there might be some context around it but I'll try to keep things generic.
 
+My impression on ~wal-g~, while I think it's great software but it lacks heavily in documentation. I am not sure why such a widely adopted tool has such poor documentation(lot of undocumented cli features). Lot of conceptual things which are important to understand for something like managing backup are not mentioned at all. Fortunately, they've a super friendly and nice telegram and the developers hang around and help resolve issues. I'd personally like to work on the docs but I'll let things sink in for a while.
+#+end_quote
 Following are ~wal-g~ commands, what they do and when to run them.
-| context     | wal-g command | what it does                                                                | when to run?                                        |
-|-------------+---------------+-----------------------------------------------------------------------------+-----------------------------------------------------|
-| base-backup | ~backup-list~   | List of successful "base backups", also will have delta backups             | manually, to check                                  |
-|             |               | ~backup-list --detail --pretty~ is useful as-well                             |                                                     |
-|             | ~backup-push~   | create a full ~$PGDATA~ backup                                                | periodic(auto)                                      |
-|             |               | ~backup-push~ will decide on it's own when to do delta or full                |                                                     |
-|             | ~delete~        | removes unnecessary WAL(s), leaving only stuff that can be used for restore | periodic(auto)                                      |
-|             | ~backup-fetch~  | Restore PostgreSQL data directory from a full backup                        | when shit hits the fan                              |
-|-------------+---------------+-----------------------------------------------------------------------------+-----------------------------------------------------|
-| wal         | ~wal-push~      | pushes WALs as part of ~archive_command~                                      | never run manually                                  |
-|             | ~wal-fetch~     | fetches WALs as part of ~restore_command~                                     | never run manually, but only run during restoration |
-|-------------+---------------+-----------------------------------------------------------------------------+-----------------------------------------------------|
-| replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~          |                                                     |
-|             | ~catchup-*~     | I haven't explored these yet                                                |                                                     |
-**** Running auxalary services
-- These would ideally go as systemd services
-- If WAL shipping (archive_command) fails for some reason, WAL files will be kept on the server until the disk is running full!
-- [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][Express inter-job dependencies with init tasks | Nomad | HashiCorp Developer]]
+| context     | wal-g command | what it does                                                                | when to run?                                                                                                                                         |
+|-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
+| base-backup | ~backup-list~   | List of successful "base backups", also will have delta backups             | manually, to check                                                                                                                                   |
+|             |               | ~backup-list --detail --pretty~ is useful as-well                             |                                                                                                                                                      |
+|             | ~backup-push~   | create a full ~$PGDATA~ backup                                                | periodic(auto), via ~systemd-timer~                                                                                                                    |
+|             |               | ~backup-push~ will decide on it's own when to do delta or full                |                                                                                                                                                      |
+|             | ~delete~        | removes unnecessary WAL(s), leaving only stuff that can be used for restore | periodic(auto), via ~systemd-timer~                                                                                                                    |
+|             | ~backup-fetch~  | Restore PostgreSQL data directory from a full backup                        | when shit hits the fan                                                                                                                               |
+|-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
+| wal         | ~wal-push~      | pushes WALs as part of ~archive_command~                                      | never run manually                                                                                                                                   |
+|             | ~wal-fetch~     | fetches WALs as part of ~restore_command~                                     | never run manually, but only run during restoration. The gitlab runbook mentions that they nolonger use this, but use streaming replication directly |
+|-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
+| replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~          |                                                                                                                                                      |
+|             | ~catchup-*~     | I haven't explored these yet                                                |                                                                                                                                                      |
+**** Making base backup
+This could be done as a [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][sidecar]] job also in cloud native environments but since i have the machine to myself I like to setup systemd. It looks similar to this:
+#+begin_src nix
+# walg-backup-push will do a full backup and clean unnessary wal files from the backup
+systemd.services."walg-backup-push" = {
+  script = ''
+  set -eu
+  export AWS_ENDPOINT=
+  export WALG_S3_PREFIX=s3://<bucket_name>/<custom_suffix>
+  export AWS_ACCESS_KEY_ID=<agenix+cat>
+  export AWS_SECRET_ACCESS_KEY=<agenix+cat>
+  export PGPASSWORD=<agenix>
+
+    ${pkgs.wal-g}/bin/wal-g backup-push $WALG_PGDATA && ${pkgs.wal-g}/bin/wal-g delete garbage
+  '';
+  serviceConfig = {
+    Type = "oneshot";
+    User = "root";
+  };
+  environment = {
+    WALG_PGDATA = "/var/lib/postgres/data";
+    PGHOST = "localhost";
+    PGPORT = "5432";
+    PGUSER = "postgres";
+  };
+};
+systemd.timers."walg-backup-push" = {
+  wantedBy = [ "timers.target" ];
+  timerConfig = {
+    OnCalendar = "weekly"; # my db updates non-frequently, OK with 1 week worth of WAL
+    Persistent = true;
+    Unit = "walg-backup-push.service";
+  };
+};
+#+end_src
+**** Running WAL archival
+- Just set ~archive_command = 'wal-g wal-push %p'~ and we're all set. It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend. You can set them however you want(eg. I set them using nomad env vars)
+- If WAL shipping (~archive_command~) fails for some reason, WAL files will be kept on the server until the disk is running full!
+**** Restoration
+***** Restoring base backup
+***** Restoring the WAL
+**** Cleanup and Maintenance
+- If you make a ~backup-push~ with the ~--parmanent~ flag(or using ~backup-mark~), it'll not be picked by the ~delete~ command.
+- ~wal-g delete garbage~ can be run periodically to remove WAL files which
+- I as of the moment run it whenever I make a base backup, but this may differ on your backup policy for your infra
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres
 Now I observe the postgres community from the sidelines and I don't think I have any "real" postgres experience, however this is what i've figured reading the manual and opinion of other folks on the interwebs.
@@ -88,6 +119,12 @@ I won't mention who said it, my real surname is ~Barman~ (check my github fr) an
 This is a short debugging story, that finally had a happy ending. :)
 #+end_quote
 Creating the plain postgres container image from nixpkgs using ~dockerTools~ was simple. It builds off ~24.05~ which has a postgres version pinned, and it happens to be ~postgres16.4.x~ and built using ~glibc 2.39~ but I was already running postgres already using the official debian based docker image. When I deployed the custom image to replace the official image, I got collation version mismatch [[https://community.fly.io/t/postgres-flex-database-postgres-has-a-collation-version-mismatch/14391][similar to this issue]]. I initially thought this was related to ~locale~, but later confirmed it was related the glibc version the postgres binary was compiled with and run from. The usually suggested way out of this is to ~REINDEX~ but my tables don't even have a backup yet so I didn't want to take any risk whatsoever.
+
+#+begin_src
+WARNING:  database "<name>" has a collation version mismatch
+DETAIL:  The database was created using collation version 2.36, but the operating system provides version 2.39.
+HINT:  Rebuild all objects in this database that use the default collation and run ALTER DATABASE <name> REFRESH COLLATION VERSION, or build PostgreSQL with the right library version.
+#+end_src
 
 So for this, there were too many ways to fix this. I want to keep things simple, so I just bought back a previous failed attempt, instead of building from nixpkgs, I'll use ~fromImage~ and use the official postgres image as base and install nixpkgs ~wal-g~ on top of it.
 
