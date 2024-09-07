@@ -1,6 +1,4 @@
 * nix-postgres-docker
-NOTE: wip, i am still writing this out. brb doing side quests
-
 #+begin_quote
 While I think I should use a managed pg or one of those baked distributions already, I also think selfhosting pg for my homelab has taught me many lessons that I wouldn't learn otherwise, so I guess we shall continue doing so "for now". (that too in a container)
 
