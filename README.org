@@ -83,6 +83,52 @@ Now I observe the postgres community from the sidelines and I don't think I have
 I won't mention who said it, my real surname is ~Barman~ (check my github fr) and I am not offended.
 #+end_quote
 **** Replication vs Backup
+*** Everything works except ~archive_command~!
+#+begin_quote
+This is a short debugging story, that finally had a happy ending. :)
+#+end_quote
+Creating the plain postgres container image from nixpkgs using ~dockerTools~ was simple. It builds off ~24.05~ which has a postgres version pinned, and it happens to be ~postgres16.4.x~ and built using ~glibc 2.39~ but I was already running postgres already using the official debian based docker image. When I deployed the custom image to replace the official image, I got collation version mismatch [[https://community.fly.io/t/postgres-flex-database-postgres-has-a-collation-version-mismatch/14391][similar to this issue]]. I initially thought this was related to ~locale~, but later confirmed it was related the glibc version the postgres binary was compiled with and run from. The usually suggested way out of this is to ~REINDEX~ but my tables don't even have a backup yet so I didn't want to take any risk whatsoever.
+
+So for this, there were too many ways to fix this. I want to keep things simple, so I just bought back a previous failed attempt, instead of building from nixpkgs, I'll use ~fromImage~ and use the official postgres image as base and install nixpkgs ~wal-g~ on top of it.
+
+This initially failed because of [[https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130][this issue]] (the ~docker_entrypoint.sh~ in the official pg image had ~/usr/bin/env~) but we resolved it using ~dockerTools.buildLayeredImage.fakeRootCommands~. So now everything is working!
+
+Old postgres official image is replaced by custom docker image, there's no collation mismatch, I am able to exec into the container where postgres is running and am able to access the ~wal-g~ binary in the ~$PATH~. All G!
+
+Now things were straightforward, I just had to setup the ~archive_command~ to ~wal-g wal-push %p~ and I am good. So I did that.
+
+I got hit by dreaded boi 127:
+#+begin_src shell
+archive command failed with exit code 127
+#+end_src
+
+This drove me nuts. Initially I thought the forked ~archiver~ process was not able to access ~wal-g~ somehow. So I tried doing normal ~cp~ as the ~archive_command~ as that's the simplest. That was failing too!
+
+Then I tried:
+- ~archive_command = 'echo test > /tmp/archive_test.txt'~ : fail
+- ~archive_command = 'true'~ : fail!
+
+Now since ~/bin/true~ was failing I realized, I might have fu*ked up big time. To confirm that this is in-fact my image, I tried setting the ~archive_command = 'true'~ in the official postgres image and it was working. So I was sure that whatever is happening is my doing.
+
+After some googling and claude, I found that you could trigger archive on demand by manually doing a WAL switch using: ~SELECT pg_switch_wal();~ So now could observe the postgres process at syscall level when it happens and not get lost in the sea of syscall. Let's bring in old friend ~strace~.
+
+- ~docker inspect -f '{{.State.Pid}}' <container id>~ : get the pid of the running postgres container (main process)
+- ~sudo strace -f -p <pid> -s 1024 -o /tmp/postgres_strace.log~
+- Then manually trigger the WAL switch and hence ~archival_command~ and exit out of strace.
+- Inspect the log, I see:
+  #+begin_src
+1053745 execve("/bin/sh", ["sh", "-c", "true"], 0xaaaaecdfef10 /* 65 vars */ <unfinished ...>
+1053746 close(3)                        = 0
+1053745 <... execve resumed>)           = -1 ENOENT (No such file or directory)
+1053746 signalfd4(-1, [URG], 8, SFD_CLOEXEC|SFD_NONBLOCK <unfinished ...>
+1053745 exit_group(127)                 = ?
+  #+end_src
+- It's not able to find ~true~! Upon looking up,  ~/bin/true~ exists. Hmm.
+- Look closer.
+- It's not able to find ~sh~! Upon looking up,  ~/bin/sh~ does not exists :)
+- Now this is the same nix issue as not finding ~env~ as previously mentioned.
+
+So I added the fix in similar manner using: ~ln -sfn "${pkgs.bash}/bin/sh" /bin/sh~ and things finally started working.
 *** Previous attempts
 **** Creating normal Dockerfile (official docker image)
 This image has a extension that i use but doesn't have wal-g in it.
@@ -166,21 +212,3 @@ exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
 error: Recipe `docker-run` failed on line 36 with exit code 1
 #+end_src
 :(
-*** Everything works ~archive_comman~ fails
-- wa-g
-- normal cp
-- /bin/true
-- archive_command = 'echo test > /tmp/archive_test.txt'
-- final boss strace
-  - before this see if official image is working
-  - sudo strace -f -p $(head -1 /var/lib/postgresql/data/postmaster.pid) -s 1024 -o /tmp/postgres_strace.log
-  - sudo strace -f -p 1049463 -s 1024 -o /tmp/postgres_strace.log
-    - docker inspect -f '{{.State.Pid}}' <container id>
-    - SELECT pg_switch_wal();
-#+begin_src
-1053745 execve("/bin/sh", ["sh", "-c", "true"], 0xaaaaecdfef10 /* 65 vars */ <unfinished ...>
-1053746 close(3)                        = 0
-1053745 <... execve resumed>)           = -1 ENOENT (No such file or directory)
-1053746 signalfd4(-1, [URG], 8, SFD_CLOEXEC|SFD_NONBLOCK <unfinished ...>
-1053745 exit_group(127)                 = ?
-#+end_src
