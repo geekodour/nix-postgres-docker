@@ -53,22 +53,5 @@ docker-manifest-push:
 	docker manifest push "{{ image_repo }}/{{ image_name }}:{{ image_id }}"
 
 
-# # NOTE: wal-g backup-fetch fetches base backup
-# # NOTE: wal-g wal-fetch fetches the WAL based on restore config (restore_command in postgres)
-# walg-fetch:
-# 	wal-g backup-fetch /tmp/pg_walg_backup LATEST
-
-# # NOTE: wal-g backup-push takes base backup
-# # NOTE: wal-g wal-push does the WAL archival (archival_command in postgres)
-# #
-# # NOTE: This should run as a cronjob in the machine where postgres is running.
-# # 		It needs the path to PGDATA and also a previliged user, I simply use
-# # 		postgres user for now.
-# walg-backup-push:
-# 	wal-g backup-push $WALG_PGDATA
-#
-# walg-backup-list:
-# 	wal-g backup-list
-
 clear:
 	rm -rf ./results

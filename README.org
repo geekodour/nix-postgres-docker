@@ -8,6 +8,27 @@ Deploying postgres on containers is [[https://www.reddit.com/r/PostgreSQL/commen
 
 How to deploy, how to add a connection pooler etc. are concerns which are out of the scope of this repo at the moment. I'll keep this document focused on "how to setup WAL archival using WAL-G" when running postgres in a container.
 #+end_quote
+** Table of contents :TOC_5:
+- [[#nix-postgres-docker][nix-postgres-docker]]
+  - [[#context-and-the-problem][Context and the problem]]
+  - [[#solution][Solution]]
+    - [[#creating-the-docker-image--breakdown-of-postgres-docker-image][Creating the docker image / Breakdown of postgres docker image.]]
+    - [[#setting-up-wal-g--references][Setting up ~wal-g~ & references]]
+      - [[#command-reference][Command reference]]
+      - [[#making-base-backup][Making base backup]]
+      - [[#running-wal-archival][Running WAL archival]]
+      - [[#restoration][Restoration]]
+        - [[#step1-restoring-base-backup][Step1: Restoring base backup]]
+        - [[#step2-restoring-the-wal][Step2: Restoring the WAL]]
+      - [[#cleanup-and-maintenance][Cleanup and Maintenance]]
+  - [[#other-notesreferences][Other notes/references]]
+    - [[#aside-on-backup-ecosystem-in-postgres][Aside on Backup ecosystem in Postgres]]
+      - [[#replication-vs-backup][Replication vs Backup]]
+    - [[#everything-works-except-archive_command][Everything works except ~archive_command~!]]
+    - [[#previous-attempts][Previous attempts]]
+      - [[#creating-normal-dockerfile-official-docker-image][Creating normal Dockerfile (official docker image)]]
+      - [[#using-dockertoolsfromimage-official-docker-image][Using ~dockerTools.fromImage~ (official docker image)]]
+
 ** Context and the problem
 To give you the context, I've been happily running postgres in my homelab without a backup(who needs one anyway) but then I planned on doing a user facing side project for which I decided, will use the same pg cluster. But now, even though I'll get only 2 users it's my duty to ensure that their data remains intact despite of the unfathomable amount of fuckery i am about to unleash on my homelab servers. So, in conclusion, i need a backup policy for the database.
 
@@ -36,8 +57,7 @@ But it was doable, I did it in two different ways:
 See ~./flake.nix~
 
 Additionally, github actions is setup at ~.github/workflows~ to build this image for both ~amd64~ and ~arm64~
-
-*** Setting up ~wal-g~
+*** Setting up ~wal-g~ & references
 #+begin_quote
 Gitlab has an amazing runbook for wal-g
 - https://gitlab.com/gitlab-com/runbooks/-/blob/master/docs/patroni/postgresql-backups-wale-walg.md
@@ -45,6 +65,7 @@ Gitlab has an amazing runbook for wal-g
 
 My impression on ~wal-g~, while I think it's great software but it lacks heavily in documentation. I am not sure why such a widely adopted tool has such poor documentation(lot of undocumented cli features). Lot of conceptual things which are important to understand for something like managing backup are not mentioned at all. Fortunately, they've a super friendly and nice telegram and the developers hang around and help resolve issues. I'd personally like to work on the docs but I'll let things sink in for a while.
 #+end_quote
+**** Command reference
 Following are ~wal-g~ commands, what they do and when to run them.
 | context     | wal-g command | what it does                                                                | when to run?                                                                                                                                         |
 |-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -53,15 +74,17 @@ Following are ~wal-g~ commands, what they do and when to run them.
 |             | ~backup-push~   | create a full ~$PGDATA~ backup                                                | periodic(auto), via ~systemd-timer~                                                                                                                    |
 |             |               | ~backup-push~ will decide on it's own when to do delta or full                |                                                                                                                                                      |
 |             | ~delete~        | removes unnecessary WAL(s), leaving only stuff that can be used for restore | periodic(auto), via ~systemd-timer~                                                                                                                    |
-|             | ~backup-fetch~  | Restore PostgreSQL data directory from a full backup                        | when shit hits the fan                                                                                                                               |
+|             | ~backup-fetch~  | Restore PostgreSQL data directory from a full backup                        | manually, when shit hits the fan                                                                                                                     |
 |-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
 | wal         | ~wal-push~      | pushes WALs as part of ~archive_command~                                      | never run manually                                                                                                                                   |
 |             | ~wal-fetch~     | fetches WALs as part of ~restore_command~                                     | never run manually, but only run during restoration. The gitlab runbook mentions that they nolonger use this, but use streaming replication directly |
 |-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
 | replication | ~wal-receive~   | I haven't explored this yet, but can be an alternative to ~wal-push~          |                                                                                                                                                      |
 |             | ~catchup-*~     | I haven't explored these yet                                                |                                                                                                                                                      |
+|-------------+---------------+-----------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
+| verify      |               | There are verify and checksum check related commands aswell                 |                                                                                                                                                      |
 **** Making base backup
-This could be done as a [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][sidecar]] job also in cloud native environments but since i have the machine to myself I like to setup systemd. It looks similar to this:
+This could be done as a [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][sidecar]] job also in cloud native environments but since i have the machine to myself I like to setup systemd-timer. Other than the timer, I can now ssh into the machine and manually trigger the backup with ~sudo systemctl start walg-backup-push~. The systemd service looks something like:
 #+begin_src nix
 # walg-backup-push will do a full backup and clean unnessary wal files from the backup
 systemd.services."walg-backup-push" = {
@@ -96,17 +119,72 @@ systemd.timers."walg-backup-push" = {
 };
 #+end_src
 **** Running WAL archival
-- Just set ~archive_command = 'wal-g wal-push %p'~ and we're all set. It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend. You can set them however you want(eg. I set them using nomad env vars)
+- Just set ~archive_command = 'wal-g wal-push %p'~ and we're all set. It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend(blackblaze). You can set them however you want(eg. I set them using nomad env vars)
 - If WAL shipping (~archive_command~) fails for some reason, WAL files will be kept on the server until the disk is running full!
-**** Restoration
-***** Restoring base backup
-***** Restoring the WAL
+**** TODO Restoration
+The [[https://www.postgresql.org/docs/current/runtime-config-wal.html][official pg docs]] mention 3 different types of recovery:
+- crash recovery / targeted recovery
+- archive-based replication / standby mode
+- streaming replication
+
+This repo is more about crash recovery and recovering a pg cluster which was backed up using WAL archive-based backup(eg. using ~wal-g~). Some people use streaming replication as a "restore mechanism" aswell (eg. see gitlab runbook). But streaming replication as a "backup mechanism" doesn't make sense. (Eg. table gets dropped, table gets dropped in both of the primary and secondary! in this case you need WAL archival and PITR)
+***** Step1: Restoring base backup
+- This is more of a one time manual thing
+- Find a place where you want to restore the base backup to, this will usually be the ~$PGDATA~ of the new postgres server to be restored.
+- ~wal-g backup-fetch /new/path/to/restored-cluster LATEST~ (~LATEST~ here is the name of backup, the literal ~LATEST~ will just fetch the actual latest base backup done so far)
+***** Step2: Restoring the WAL
+- The settings(~postgresql.conf~) here are only needed for the duration of restore, once done they should be reset.
+- Based on the scenario, you can do both "Standby mode" and "Targeted recovery" with the same instance, by having both ~standby.signal~ and ~recovery.signal~
+****** Config reference
+The official docs(pg16.04) are beter reference but just dumping here for an overview.
+| Context                      | Name                      | Description                                                                       | Crash recovery mode              | Standby mode |
+|------------------------------+---------------------------+-----------------------------------------------------------------------------------+----------------------------------+--------------|
+|                              | ~restore_command~           |                                                                                   | Required                         | Optional     |
+|------------------------------+---------------------------+-----------------------------------------------------------------------------------+----------------------------------+--------------|
+| Recovery Target("till this") | ~recovery_target~           | Only allowed value is ~immediate~, till consistent state                            | Yes(oneof)                       | N/A          |
+|                              | ~recovery_target_name~      | if ~pg_create_restore_point~ was used                                               | Yes(oneof)                       | N/A          |
+|                              | ~recovery_target_time~      | numeric offset from UTC, time stamp up to which recovery will proceed.            | Yes(oneof)                       | N/A          |
+|                              | ~recovery_target_lsn~       | If you know the exact lsn                                                         | Yes(oneof)                       | N/A          |
+|                              | ~recovery_target_xid~       | If you know the exact tx_id                                                       | Yes(oneof)                       | N/A          |
+|------------------------------+---------------------------+-----------------------------------------------------------------------------------+----------------------------------+--------------|
+|                              | ~recovery_target_inclusive~ | Related to ~recovery_target_[time/lsn/xid]~ for one-off adjustments                 | Yes(default:on)                  | N/A          |
+|                              | ~recovery_target_timeline~  | The ~recovery_target_*~ can only belong to one timeline_id.                         | Yes(default:latest wal timeline) | N/A          |
+|                              | ~recovery_target_action~    | What happens when restore completes (~pause/shutdown/promote~). see doc for details | Yes(default:pause)               |              |
+****** Standby mode
+#+begin_quote
+- Standby mode can work via streaming replication or via WAL Archival or both
+- Standby mode is usually for HA and readonly, can be promoted(see hot/warm standby etc.).
+#+end_quote
+- create a file called ~standby.signal~ in ~$PGDATA~.
+- Start the postgres server in standby mode (by virtue of ~standby.signal~)
+  - The server will enter standby and will not stop being standby utill promoted (if ~hotstandby~, we'll be able to read from it aswell)
+- Based on your configuration, Fetches new data based on either or both:
+  - ~primary_conninfo~ : Sending server (streaming replication). When using this, ~recovery_*~ configuration is mostly not useful.
+  - ~restore_command~: fetching new WAL segments.
+****** Targeted recovery/Crash recovery/Data loss recovery mode
+#+begin_quote
+PITR, as I understand PITR, it's is not one single thing. It's the combination of all the different recovery targets, mechanism to do the backups and the concept of [[https://www.highgo.ca/2021/11/01/the-postgresql-timeline-concept/][postgres timeline]] etc. With the concept of timeline ID, it is possible that the same LSN or the same WAL segments exist in multiple timelines.
+#+end_quote
+- create a file called ~recovery.signal~ in ~$PGDATA~.
+  - The server will enter recovery and will not stop recovery when the end of archived WAL is reached
+  - The ~recovery_*~ configuration control how this behaves (Eg. you can control for an earlier stopping point than end of WAL etc.)
+- Set the required ~recovery_*~ settings based on requirements
+  - Basic restore config for ~postgresql.conf~
+    - ~restore_command = wal-g wal-fetch %f %p~
+      - It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend(blackblaze)
+    - ~recovery_target = 'immediate'~
+- Start the postgres server in recovery mode (by virtue of ~recovery.signal~)
+- This should do the recovery till you reach ~recovery_target_action~.
+- If everything looks good, remove the ~recovery.signal~ file from ~$PGDATA~.
 **** Cleanup and Maintenance
 - If you make a ~backup-push~ with the ~--parmanent~ flag(or using ~backup-mark~), it'll not be picked by the ~delete~ command.
 - ~wal-g delete garbage~ can be run periodically to remove WAL files which
 - I as of the moment run it whenever I make a base backup, but this may differ on your backup policy for your infra
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres
+#+begin_quote
+This section is todo, I'll update later.
+#+end_quote
 Now I observe the postgres community from the sidelines and I don't think I have any "real" postgres experience, however this is what i've figured reading the manual and opinion of other folks on the interwebs.
 #+begin_quote
 "pgBackRest is more conservative and kind of reliable, wal-g is more performant, both are much better than Barman"
@@ -195,7 +273,7 @@ COPY --from=builder /srv/${PG_MAJOR}/pg_uuidv7.so /usr/lib/postgresql/${PG_MAJOR
 COPY --from=builder /srv/pg_uuidv7.control /usr/share/postgresql/${PG_MAJOR}/extension
 COPY --from=builder /srv/pg_uuidv7--1.5.sql /usr/share/postgresql/${PG_MAJOR}/extension
 #+end_src
-**** ~dockerTools.fromImage~ (official docker image)
+**** Using ~dockerTools.fromImage~ (official docker image)
 - ~dockerTools~ allow you pull from another image. So since the official comes with the starter scripts that run initdb and it does a lot of other things. I thought it would be nice to just use it. But it didn't work out.
 - See [[https://discourse.nixos.org/t/building-on-dockerfile-based-images/29583][Building on dockerfile-based images - Help - NixOS Discourse]]
 #+begin_src nix
