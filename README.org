@@ -140,6 +140,7 @@ This repo is more about crash recovery and recovering a pg cluster which was bac
 ***** Step2: Restoring the WAL
 - The settings(~postgresql.conf~) here are only needed for the duration of restore, once done they should be reset.
 - Based on the scenario, you can do both "Standby mode" and "Targeted recovery" with the same instance, by having both ~standby.signal~ and ~recovery.signal~
+- After fetching the base-backup(using ~backup-fetch~), if you directly try to launch postgres on that ~$PGDATA~ without ~standby.signal~ or ~recovery.signal~, postgres will error out with a helpful message.
 ****** Config reference
 The official docs(pg16.04) are beter reference but just dumping here for an overview.
 | Context                      | Name                      | Description                                                                       | Crash recovery mode              | Standby mode |

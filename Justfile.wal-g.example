@@ -1,18 +1,46 @@
+pg_data := "./restoredb"
+
 default:
 	just --list
 
-mount:
-	mkdir -p ./temp
-	@echo "remote to mount, ctrl+c to unmount."
-	@echo "use fusermount -u /path/to/local/mount if doesn't unmount automatically"
-	rclone mount <profile>:<repo> ./temp/
+#####################
+# Restore
+#####################
+# Usage
+# 1. restore-base-backup
+# 2. restore-add-crash-recovery-signal
+# 3. start pg
 
+restore-base-backup:
+	wal-g backup-fetch {{pg_data}} LATEST
+
+restore-add-crash-recovery-signal:
+	touch {{pg_data}}/recovery.signal
+
+restore-remove-crash-recovery-signal:
+	rm {{pg_data}}/recovery.signal
+
+# NOTE: If running postgres directly on the server, the postgresql.conf file
+# 		will be inside $PGDATA. But If you're running postgres in a container
+# 		via an orchestrator, you might be bind mounting the custom
+# 		postgresql.conf file into the $PGDATA/postgresql.conf, in those cases:
+# 		- for testing locally: You might want specify the config file explicitly using --config-file=<path to config file>
+# 		- for restoring in the container: TODO TODO
+restore-start-pg:
+	postgres -D {{pg_data}} -c
+
+#####################
+# Listing
+#####################
 list:
     wal-g backup-list
 
 list-detail:
     wal-g backup-list --pretty --detail
 
+#####################
+# Cleanup
+#####################
 # NOTE: If you run "delete retain", usually you don't need to run garbage
 delete-garbage-dry-run:
     wal-g delete garbage
@@ -23,9 +51,9 @@ delete-everything-dry-run:
 delete-retain-only-last-2-dry-run:
 	wal-g delete retain FULL 2
 
-delete-everything-dry-run:
-    wal-g delete everything
-
+#####################
+# Others
+#####################
 # NOTE: needs pg access
 integrity:
     wal-g wal-verify integrity
@@ -33,3 +61,9 @@ integrity:
 # NOTE: needs pg access
 timeline:
 	wal-g wal-verify timeline
+
+mount:
+	mkdir -p ./temp
+	@echo "remote to mount, ctrl+c to unmount."
+	@echo "use fusermount -u /path/to/local/mount if doesn't unmount automatically"
+	rclone mount b2_geekodour:geekodour-postgres-backup ./temp/
