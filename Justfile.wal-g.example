@@ -1,0 +1,35 @@
+default:
+	just --list
+
+mount:
+	mkdir -p ./temp
+	@echo "remote to mount, ctrl+c to unmount."
+	@echo "use fusermount -u /path/to/local/mount if doesn't unmount automatically"
+	rclone mount <profile>:<repo> ./temp/
+
+list:
+    wal-g backup-list
+
+list-detail:
+    wal-g backup-list --pretty --detail
+
+# NOTE: If you run "delete retain", usually you don't need to run garbage
+delete-garbage-dry-run:
+    wal-g delete garbage
+
+delete-everything-dry-run:
+    wal-g delete everything
+
+delete-retain-only-last-2-dry-run:
+	wal-g delete retain FULL 2
+
+delete-everything-dry-run:
+    wal-g delete everything
+
+# NOTE: needs pg access
+integrity:
+    wal-g wal-verify integrity
+
+# NOTE: needs pg access
+timeline:
+	wal-g wal-verify timeline
