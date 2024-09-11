@@ -37,7 +37,6 @@ For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
       - [[#running-wal-archival][Running WAL archival]]
       - [[#restorationstandby][Restoration/Standby]]
         - [[#postgres-restore-related-command-reference][postgres restore related command reference]]
-        - [[#other-gotchastips-when-restoring][Other gotchas/tips when restoring]]
       - [[#cleanup-and-maintenance][Cleanup and Maintenance]]
   - [[#restoration-crash-recovery-and-standby][Restoration, Crash Recovery and Standby]]
     - [[#standby-servers-async][Standby Servers (Async)]]
@@ -56,8 +55,8 @@ For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
     - [[#crash-recovery--standby-todo][Crash Recovery + Standby (TODO)]]
     - [[#related-concepts][Related concepts]]
       - [[#failover][Failover]]
-      - [[#promotion][Promotion]]
-      - [[#archive_mode-when-recoverystandby][~archive_mode~ when recovery/standby]]
+      - [[#promotion--timeline][Promotion & Timeline]]
+      - [[#whether-to-set-archive_mode-when-recoverystandby][Whether to set ~archive_mode~ when recovery/standby]]
   - [[#other-notesreferences][Other notes/references]]
     - [[#aside-on-backup-ecosystem-in-postgres-todo][Aside on Backup ecosystem in Postgres (TODO)]]
       - [[#replication-vs-backup][Replication vs Backup]]
@@ -170,9 +169,12 @@ systemd.timers."walg-backup-push" = {
 **** Restoration/Standby
 Restoring and standby is pretty involved, I've created a separate higher level section for it.
 ***** postgres restore related command reference
-The official docs(pg16.04) are beter reference but just dumping here for an overview.
 #+begin_quote
-
+- The official docs(pg16.04) are much better reference but just dumping here for an overview.
+- As of pg17 only the date/time and named restore point options are very usable, since there are no tools to help you identify with any accuracy which transaction ID to use.
+- ~date +'%Y-%m-%d %H:%M:%S.%N' | cut -b 1-23~ gives numeric UTC offset
+- ~pg_controldata -D $PGDATA~
+- ~pg_resetwal~ : [[https://stackoverflow.com/questions/8799474/postgresql-error-panic-could-not-locate-a-valid-checkpoint-record][postgresql error PANIC: could not locate a valid checkpoint record - Stack Overflow]]
 #+end_quote
 
 | Context                      | Name                      | Description                                                                       | Crash recovery mode              | Standby mode                                         |
@@ -188,26 +190,6 @@ The official docs(pg16.04) are beter reference but just dumping here for an over
 |                              | ~recovery_target_inclusive~ | Related to ~recovery_target_[time/lsn/xid]~ for one-off adjustments                 | Yes(default:on)                  | N/A                                                  |
 |                              | ~recovery_target_timeline~  | The ~recovery_target_*~ can only belong to one timeline_id.                         | Yes(default:latest wal timeline) | N/A                                                  |
 |                              | ~recovery_target_action~    | What happens when restore completes (~pause/shutdown/promote~). see doc for details | Yes(default:pause)               | N/A                                                  |
-***** Other gotchas/tips when restoring
-- Gotchas & Behavior
-  - ~.history~ errors in the logs that's expected when doing crash recovery: [[https://github.com/wal-g/wal-g/issues/628][wal-g/wal-g#628 Error: 2020/04/12 19:10:09.300784 Archive '00000002.history']]
-  - During recovery mode, if the recovery is terminated because of an external error, the server can simply be restarted and it will continue recovery
-  - Upon completion of the recovery process, the server will remove ~recovery.signal~ (to prevent accidentally re-entering recovery mode later) and then commence normal database operations.
-    - But it'll NOT remove the ~recovery.signal~ file if you've set ~recovery_target_action~ to ~shutdown~.
-    - If you've set ~recovery_target_action~ to ~shutdown~ and there's no ~recovery.signal~ file, postgres server will startup as normal.
-  - Upon successful restoration, you'll have a new ~postgres timeline~
-    - Each timeline will have its own file naming scheme, so they can't overlap.
-    - So even if ~archive_command~ starts archiving right after getting restored, it'll be a new timeline and will not overlap with older timeline. But needing this is unusual I think.
-      - (Important: See  [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][consequence here]]) so prefer disabling archive_command in the standby unless it becomes the primary.
-    - There should be only [[https://stackoverflow.com/questions/37154902/primary-and-standby-server-at-different-timelines-in-postgres][one valid "current" timeline]]
-  - Things can get pretty messed up: https://github.com/wal-g/wal-g/issues/1780 due to order of operations. Also see [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][postgresql - Failed Postgres Replication from master to standby - Database Administrators Stack Exchange]]
-- Tips
-  - As of pg17 only the date/time and named restore point options are very usable, since there are no tools to help you identify with any accuracy which transaction ID to use. -
-  - ~date +'%Y-%m-%d %H:%M:%S.%N' | cut -b 1-23~ gives numeric UTC offset
-  - ~SELECT timeline_id FROM pg_control_checkpoint();~
-- Helpful commands
-  - ~pg_controldata -D $PGDATA~
-  - ~pg_resetwal~ : [[https://stackoverflow.com/questions/8799474/postgresql-error-panic-could-not-locate-a-valid-checkpoint-record][postgresql error PANIC: could not locate a valid checkpoint record - Stack Overflow]]
 **** Cleanup and Maintenance
 - If you make a ~backup-push~ with the ~--parmanent~ flag(or using ~backup-mark~), it'll not be picked by the ~delete~ command.
 - ~wal-g delete garbage~ can be run periodically to remove WAL files which
@@ -216,6 +198,8 @@ The official docs(pg16.04) are beter reference but just dumping here for an over
 #+begin_quote
 - All of these need a base backup or [[https://stackoverflow.com/questions/77234780/postgres-replication-without-taking-a-new-base-backup-of-the-primary-server][to be configured to use pg_rewind]], I personally have not used ~pg_rewind~ yet.
 - All of the places where streaming replication can be applied, it can either be [[https://www.postgresql.org/docs/current/wal-async-commit.html][sync or async]] , sync replication is not possible with WAL archival as it operates at commit level and WAL archival works at WAL segment level.
+- ~.history~ errors in the logs are expected when doing crash recovery: [[https://github.com/wal-g/wal-g/issues/628][wal-g/wal-g#628]]
+- Order of operations matter: [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][Failed Postgres Replication from master to standby]]
 #+end_quote
 | Combination                     | SR protocol | WAL Archival (PITR) / File based / Log shipping      | Notes                                                         | Doubts                                                          |
 |---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
@@ -287,6 +271,7 @@ wal-g backup-fetch $PATH_TO_PGDATA LATEST
 #+begin_quote
 - PITR, as I understand PITR, it's is not one single thing. It's the combination of all the different recovery targets, mechanism to do the backups and the concept of [[https://www.highgo.ca/2021/11/01/the-postgresql-timeline-concept/][postgres timeline]] etc. With the concept of timeline ID, it is possible that the same LSN or the same WAL segments exist in multiple timelines.
 - When using different a ~recovery_* target~ other than ~recovery_target~ and when ~recovery_target_action~, you can use ~pg_wal_replay_resume()~ to play/pause the recovery process. Eg. You want to manually check if some data is recovered or no etc. Like using a debugger with steps kind of. But usually this is not needed simply using ~recovery_target~ is enough for me.
+- During recovery mode, if the recovery is terminated because of an external error, the server can simply be restarted and it will continue recovery
 #+end_quote
 **** via Streaming Replication (TODO)
 - I've not done this yet
@@ -329,16 +314,19 @@ See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][Postgr
 - ~STONITH (Shoot The Other Node In The Head)~: If the primary server fails and the standby server becomes the new primary, and then the old primary restarts, you must have a mechanism for informing the old primary that it is no longer the primary. This is necessary to avoid situations where both systems think they are the primary, which will lead to confusion and ultimately data loss.
 - PostgreSQL does not provide the system software required to identify a failure on the primary and notify the standby database server.
 - To trigger failover of a log-shipping standby server, run pg_ctl promote or call pg_promote().
-**** Promotion
+**** Promotion & Timeline
 #+begin_quote
 - Successful promotion will put the server in a new timeline, this is true for both crash recovery(implicit) and standby mode.
+- Each timeline will have its own file naming scheme, so they can't overlap.
 - Once promotion is done, you [[https://stackoverflow.com/questions/59875106/multiple-times-point-in-time-recovery-in-postgresql][cannot go back.]] Basically, do not promote standby to primary if you want this standby to be able to apply WALs from other primary.
 #+end_quote
+- There should be only [[https://stackoverflow.com/questions/37154902/primary-and-standby-server-at-different-timelines-in-postgres][one valid "current" timeline]]
+- ~SELECT timeline_id FROM pg_control_checkpoint();~
 - For recovery
   - postgres implicitly(and automatically) gets promoted and the ~recovery.signal~ file is deleted on successful restore unless ~recovery_target_action~ is set to ~shutdown~.
 - For stanby
   - postgres will NOT automatically promote anything, you'd need to manually call ~pg_ctl promote~
-**** ~archive_mode~ when recovery/standby
+**** Whether to set ~archive_mode~ when recovery/standby
 There is some confusion around whether to keep ~archive_mode~ on when running a recovery server/standby server.
 - To be safe, I unset ~archive_command~ or set ~archive_mode=off~ for the standby/recovery postgres instance.
   - I don't want it to be pushing ~archive_command~ immediately after getting restored(I'd want to verify things are working etc.)
