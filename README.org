@@ -2,7 +2,6 @@
 ** Preface
 #+begin_quote
 I'd highly recommend reading the official docs, and only read this doc as supplement on how do some of these things fit in context of ~wal-g~:
-
 - [[https://www.postgresql.org/docs/current/runtime-config-wal.html][PostgreSQL: Documentation: 16: 20.5. Write Ahead Log]]
 - [[https://www.postgresql.org/docs/current/wal-configuration.html][PostgreSQL: Documentation: 16: 30.5. WAL Configuration]]
 - [[https://www.postgresql.org/docs/current/backup.html][PostgreSQL: Documentation: 16: Chapter 26. Backup and Restore]]
@@ -103,8 +102,6 @@ Gitlab has an amazing runbook for wal-g
 - https://archive.ph/83BLw
 
 My impression on ~wal-g~, while I think it's great software but it lacks heavily in documentation. I am not sure why such a widely adopted tool has such poor documentation(lot of undocumented cli features). Lot of conceptual things which are important to understand for something like managing backup are not mentioned at all. Fortunately, they've a super friendly and nice telegram and the developers hang around and help resolve issues. I'd personally like to work on the docs but I'll let things sink in for a while.
-
-~wal-g~ has a small catch that makes it little in-convenient to run base-backups from the host: https://github.com/wal-g/wal-g/issues/1782
 #+end_quote
 **** Command reference
 Following are ~wal-g~ commands, what they do and when to run them.
@@ -131,7 +128,8 @@ Following are ~wal-g~ commands, what they do and when to run them.
 |-------------+----------------------+-------------------------------------------------------------------------------------------------------+------------------------------------------------------------------------------------------------------------------------------------------------------|
 | verify      |                      | There are verify and checksum check related commands aswell                                           |                                                                                                                                                      |
 **** Making base backup
-This could be done as a [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][sidecar]] job also in cloud native environments but since i have the machine to myself I like to setup systemd-timer. Other than the timer, I can now ssh into the machine and manually trigger the backup with ~sudo systemctl start walg-backup-push~. The systemd service looks something like:
+- This could be done as a [[https://developer.hashicorp.com/nomad/tutorials/task-deps/task-dependencies-interjob][sidecar]] job also in cloud native environments but since i have the machine to myself I like to setup systemd-timer. Other than the timer, I can now ssh into the machine and manually trigger the backup with ~sudo systemctl start walg-backup-push~. The systemd service looks something like:
+- ~wal-g~ has an issue that makes it little in-convenient to run base-backups from the host when running postgres in container: https://github.com/wal-g/wal-g/issues/1782
 #+begin_src nix
 # walg-backup-push will do a full backup and clean unnessary wal files from the backup
 systemd.services."walg-backup-push" = {
@@ -169,22 +167,9 @@ systemd.timers."walg-backup-push" = {
 - Just set ~archive_command = 'wal-g wal-push %p'~ and we're all set. It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend(blackblaze). You can set them however you want(eg. I set them using nomad env vars)
 - If WAL shipping (~archive_command~) fails for some reason, WAL files will be kept on the server until the disk is running full!
 - There are a number of cases where the same WAL segment can be pushed more than once, especially after failures where Postgres is not sure that the command completed.
-**** TODO Restoration
-The [[https://www.postgresql.org/docs/current/runtime-config-wal.html][official pg docs]] mention 3 different types of recovery:
-- crash recovery / targeted recovery
-- archive-based replication / standby mode
-- streaming replication
-
-This repo is more about crash recovery and recovering a pg cluster which was backed up using WAL archive-based backup(eg. using ~wal-g~). Some people use streaming replication as a "restore mechanism" aswell (eg. see gitlab runbook). But streaming replication as a "backup mechanism" doesn't make sense. (Eg. table gets dropped, table gets dropped in both of the primary and secondary! in this case you need WAL archival and PITR)
-***** Step1: Restoring base backup
-- This is more of a one time manual thing
-- Find a place where you want to restore the base backup to, this will usually be the ~$PGDATA~ of the new postgres server to be restored.
-- ~wal-g backup-fetch /new/path/to/restored-cluster LATEST~ (~LATEST~ here is the name of backup, the literal ~LATEST~ will just fetch the actual latest base backup done so far)
-***** Step2: Restoring the WAL
-- The settings(~postgresql.conf~) here are only needed for the duration of restore, once done they should be reset.
-- Based on the scenario, you can do both "Standby mode" and "Targeted recovery" with the same instance, by having both ~standby.signal~ and ~recovery.signal~
-- After fetching the base-backup(using ~backup-fetch~), if you directly try to launch postgres on that ~$PGDATA~ without ~standby.signal~ or ~recovery.signal~, postgres will error out with a helpful message.
-****** Config reference
+**** Restoration/Standby
+Restoring and standby is pretty involved, I've created a separate higher level section for it.
+***** postgres restore related command reference
 The official docs(pg16.04) are beter reference but just dumping here for an overview.
 #+begin_quote
 
@@ -203,18 +188,7 @@ The official docs(pg16.04) are beter reference but just dumping here for an over
 |                              | ~recovery_target_inclusive~ | Related to ~recovery_target_[time/lsn/xid]~ for one-off adjustments                 | Yes(default:on)                  | N/A                                                  |
 |                              | ~recovery_target_timeline~  | The ~recovery_target_*~ can only belong to one timeline_id.                         | Yes(default:latest wal timeline) | N/A                                                  |
 |                              | ~recovery_target_action~    | What happens when restore completes (~pause/shutdown/promote~). see doc for details | Yes(default:pause)               | N/A                                                  |
-****** Standby mode
-#+begin_quote
-- Standby mode can work via streaming replication or via WAL Archival or both
-- Standby mode is usually for HA and readonly, can be promoted(see hot/warm standby etc.).
-#+end_quote
-- create a file called ~standby.signal~ in ~$PGDATA~.
-- Start the postgres server in standby mode (by virtue of ~standby.signal~)
-  - The server will enter standby and will not stop being standby utill promoted (if ~hotstandby~, we'll be able to read from it aswell)
-- Based on your configuration, Fetches new data based on either or both:
-  - ~primary_conninfo~ : Sending server (streaming replication). When using this, ~recovery_*~ configuration is mostly not useful.
-  - ~restore_command~: fetching new WAL segments.
-- You should not promote standby to primary if you want this standby to be able to apply WALs from other primary. Otherwise promote as needed.
+***** Step2: Restoring the WAL
 ****** Targeted recovery/Crash recovery/Data loss recovery mode
 #+begin_quote
 - PITR, as I understand PITR, it's is not one single thing. It's the combination of all the different recovery targets, mechanism to do the backups and the concept of [[https://www.highgo.ca/2021/11/01/the-postgresql-timeline-concept/][postgres timeline]] etc. With the concept of timeline ID, it is possible that the same LSN or the same WAL segments exist in multiple timelines.
@@ -232,14 +206,6 @@ The official docs(pg16.04) are beter reference but just dumping here for an over
 - Start the postgres server in recovery mode (by virtue of ~recovery.signal~)
 - This should do the recovery till you reach ~recovery_target_action~.
 - If everything looks good, remove the ~recovery.signal~ file from ~$PGDATA~.
-******* Promotion
-#+begin_quote
-promotion will put the server in a new timeline
-#+end_quote
-- After recovery is over, the postgres server [[https://dba.stackexchange.com/questions/315999/postgresql-stops-continuous-recovery-without-error][will automatically get promoted]] unlike in standby mode, where you need to manually run ~pg_ctl promote~ or call ~pg_promote()~
-  - After succcessful run of these command the ~.signal~ file is deleted by it. ~pg_ctl promote~ needs the standby to be running.
-- This means you don't want to run another recovery after one as it'll promote things and things will not align
-- Same for standby: https://github.com/wal-g/wal-g/issues/1780#issuecomment-2339726232
 ***** Other gotchas/tips when restoring
 - Gotchas & Behavior
   - ~.history~ errors in the logs that's expected when doing crash recovery: [[https://github.com/wal-g/wal-g/issues/628][wal-g/wal-g#628 Error: 2020/04/12 19:10:09.300784 Archive '00000002.history']]
@@ -260,48 +226,41 @@ promotion will put the server in a new timeline
 - Helpful commands
   - ~pg_controldata -D $PGDATA~
   - ~pg_resetwal~ : [[https://stackoverflow.com/questions/8799474/postgresql-error-panic-could-not-locate-a-valid-checkpoint-record][postgresql error PANIC: could not locate a valid checkpoint record - Stack Overflow]]
-**** Failover
-#+begin_quote
-See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][PostgreSQL: Documentation: 16: 27.3. Failover]]. I am just dumping important points from there and some peronal notes
-#+end_quote
-- ~STONITH (Shoot The Other Node In The Head)~: If the primary server fails and the standby server becomes the new primary, and then the old primary restarts, you must have a mechanism for informing the old primary that it is no longer the primary. This is necessary to avoid situations where both systems think they are the primary, which will lead to confusion and ultimately data loss.
-- PostgreSQL does not provide the system software required to identify a failure on the primary and notify the standby database server.
-- To trigger failover of a log-shipping standby server, run pg_ctl promote or call pg_promote().
 **** Cleanup and Maintenance
 - If you make a ~backup-push~ with the ~--parmanent~ flag(or using ~backup-mark~), it'll not be picked by the ~delete~ command.
 - ~wal-g delete garbage~ can be run periodically to remove WAL files which
 - I think if you run ~wal-g retain~ then you don't really need to run ~garbage~ but you can if leftovers are there.
-*** Usecases
+** Restoration, Crash Recovery and Standby
 #+begin_quote
 - All of these need a base backup or [[https://stackoverflow.com/questions/77234780/postgres-replication-without-taking-a-new-base-backup-of-the-primary-server][to be configured to use pg_rewind]], I personally have not used ~pg_rewind~ yet.
 - All of the places where streaming replication can be applied, it can either be [[https://www.postgresql.org/docs/current/wal-async-commit.html][sync or async]] , sync replication is not possible with WAL archival as it operates at commit level and WAL archival works at WAL segment level.
 #+end_quote
-| Combination                     | SR protocol | WAL Archival (PITR) / File based / Log shipping      | Notes                                                      | Doubts                                                          |
-|---------------------------------+-------------+------------------------------------------------------+------------------------------------------------------------+-----------------------------------------------------------------|
-| Warm Standby                    | No          | ~standby.signal~                                       | primary & standby operate in continuous archival/mode      |                                                                 |
-| Hot Standby                     | No          | ~standby.signal~ + ~hot_standby=on~                      | Same as warm stanby but readable while WAL(s) being loaded |                                                                 |
-|---------------------------------+-------------+------------------------------------------------------+------------------------------------------------------------+-----------------------------------------------------------------|
-| Warm Standby                    | Yes         | No                                                   | This is no backup, just replicas                           |                                                                 |
-| Hot Standby                     | Yes         | No                                                   | This is no backup, just replicas                           |                                                                 |
-|---------------------------------+-------------+------------------------------------------------------+------------------------------------------------------------+-----------------------------------------------------------------|
-| Warm Standby                    | Yes         | Yes                                                  | This is ideal                                              |                                                                 |
-| Hot Standby                     | Yes         | Yes                                                  | This is even more ideal imo                                |                                                                 |
-|---------------------------------+-------------+------------------------------------------------------+------------------------------------------------------------+-----------------------------------------------------------------|
-| Crash Recovery (Normal)         | No          | Yes, use ~recovery.signal~                             | This is the most basic scenario                            | Do we really need to disable ~archive_mode~ here during recovery? |
-| Crash Recovery (w Standby)      | No          | Yes, use ~recovery.signal~ and use ~standby.signal~ both | In this scenario, stanby takes precedence                  |                                                                 |
-| Crash Recovery (w Standby w SR) | Yes         | Yes                                                  | WAL archive + SR + Instant promotion                       | I don't see this scenario being very useful/intuitive/practical |
-**** Standby Servers (Async)
+| Combination                     | SR protocol | WAL Archival (PITR) / File based / Log shipping      | Notes                                                         | Doubts                                                          |
+|---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
+| Warm Standby                    | No          | ~standby.signal~                                       | primary & standby (~archive_command~ <=> ~restore_command~)       |                                                                 |
+| Hot Standby                     | No          | ~standby.signal~ + ~hot_standby=on~                      | warm standby + read-only                                      |                                                                 |
+|---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
+| Warm Standby                    | Yes         | No                                                   | This is no backup, just replicas (~primary_conninfo~ et al)     |                                                                 |
+| Hot Standby                     | Yes         | No                                                   | This is no backup, just replicas (~primary_conninfo~ et al)     |                                                                 |
+|---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
+| Warm Standby                    | Yes         | Yes                                                  | This is ideal (~primary_conninfo~ et al + ~restore_command~)      |                                                                 |
+| Hot Standby                     | Yes         | Yes                                                  | This is also ideal (~primary_conninfo~ et al + ~restore_command~) |                                                                 |
+|---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
+| Crash Recovery (Normal)         | No          | Yes, use ~recovery.signal~                             | This is the most basic scenario (~restore_command~)             | Do we really need to disable ~archive_mode~ here during recovery? |
+| Crash Recovery (w Standby)      | No          | Yes, use ~recovery.signal~ and use ~standby.signal~ both | In this scenario, standby takes precedence (~restore_command~)  |                                                                 |
+| Crash Recovery (w Standby w SR) | Yes         | Yes                                                  | WAL archive + SR + Instant promotion                          | I don't see this scenario being very useful/intuitive/practical |
+*** Standby Servers (Async)
 #+begin_quote
-- These can be either warm or hot
+These can be either warm or hot
 #+end_quote
-***** via Streaming Replication (TODO)
+**** via Streaming Replication (TODO)
 - I've not done this yet
 - You need to set ~primary_conninfo~. ~restore_command~ is not used here.
-***** via WAL Archival (PITR)
-- You can run a standby server with ~restore_command~ + ~standby.signal~ also.
-- How this works is by polling bases, the standby after setting ~restore_command~ will first fetch all of since the base backup and then it'll keep looking for the next WAL log, which is not yet pushed by master to storage, and as soon as the next segment is available it'll load that in. See [[https://github.com/wal-g/wal-g/issues/1775][this issue]] for an example of this behavior.
-- Once you know that the "current" primary is no longer going to push new WAL logs/data, you can simply shutdown the primary and promote the stanby as per need.
-****** TODO Fetch the base backup
+**** via WAL Archival (PITR)
+#+begin_quote
+This section is about running a "standby server" with ~restore_command~ + ~standby.signal~
+#+end_quote
+***** Fetch the base backup
 #+begin_src bash
 export AWS_ENDPOINT=
 export WALG_S3_PREFIX=
@@ -311,11 +270,14 @@ export PATH_TO_PGDATA=
 
 wal-g backup-fetch $PATH_TO_PGDATA LATEST
 #+end_src
+- This is more of a one time manual thing
+- Find a place where you want to restore the base backup to, this will usually be the ~$PGDATA~ of the new postgres server to be restored/standby to be created.
 - Use ~wal-g backup-fetch~ to fetch the base backup you want.
 - In case of running postgres in a container
   - You'd want to run ~backup-fetch~ on the host to whatever the ~$PGDATA~ directory should be. And when that ~$PGDATA~ gets mounted into the container make sure its given appropriate permissions etc.
   - In case of using the official postgres image in a non-rootless/rootfull environment, postgres uses [[https://github.com/tianon/gosu][gosu]], so you can in-fact run ~backup-fetch~ as root and you should be fine. Whether this is a good idea? ¯\_(ツ)_/¯
-****** TODO Make changes to ~postgresql.conf~ for standby
+***** Make changes to ~postgresql.conf~ for standby
+- Add ~standby.signal~ inside ~$PGDATA~, this will tell postgres to start in standby mode. If you don't specify this and yet have a ~restore_command~, pg will safely error out.
 - Update standby settings in ~postgresql.conf~
   #+begin_src diff
 --- a/workloads/nomad/pg/postgresql.conf
@@ -324,32 +286,54 @@ wal-g backup-fetch $PATH_TO_PGDATA LATEST
 +archive_mode = off		# enables archiving; off, on, or always
 -#restore_command = ''		# command to use to restore an archived WAL file
 +restore_command = 'wal-g wal-fetch %f %p'
--#recovery_target = ''		# 'immediate' to end recovery as soon as a consistent state is reached
-+recovery_target = 'immediate'
--#recovery_target_action = 'pause'	# 'pause', 'promote', 'shutdown'
-+recovery_target_action = 'pause'	# 'pause', 'promote', 'shutdown'
   #+end_src
-- Add ~standby.signal~
-**** TODO Standby Servers (Sync) (ONLY via Streaming Replication)
+- *DO NOT SET* any of the other ~recovery_*~ config(s), those are meant to be set during recovery and will mess things up if set when setting up a standby.
+- Start the postgres service(the container if running via container).
+- At this point, it should take a while based on how far ago the base backup was taken/how many WALs it needs to catch up on etc. Once it catches up, it'll continue to be in standby mode.
+- To continue to be in standby mode means, postgres will keep looking for the next WAL log, which is probably not yet pushed by the primary's ~archive_command~, as soon as the next segment is available it'll load that in.
+  - See [[https://github.com/wal-g/wal-g/issues/1775][this issue]] for an example of this behavior.
+***** Promote as needed
+- Once you know that the "current" primary is no longer going to push new WAL logs/data, you can simply shutdown the primary and promote the stanby as per need.
+- You can promote a standby by running ~pg_ctl promote~ or calling ~pg_promote()~. This will also delete the ~standby.signal~ file.
+*** Standby Servers (Sync) (ONLY via Streaming Replication) (TODO)
 #+begin_quote
 - Synchronous standby servers cannot happen without postgres streaming replication protocol, hence won't work with WAL archival.
 - These can be either warm or hot
 #+end_quote
 - I've not done this yet
-**** Crash Recovery
-***** via Streaming Replication (TODO)
+*** Crash Recovery
+**** via Streaming Replication (TODO)
 - I've not done this yet
 - I don't completely understand this scenario because after recovery, the recovery pg instance would implicitly be promoted but doing this via streaming replication means the primary is live. So in which case do we even need this?
-***** TODO via WAL Archival (PITR)
-I've not done this yet, will update when I get an opportunity to play around with it. But this is extremely similar to standby servers except the following gotchas:
-- WRITE THEM DOWN
-**** TODO Crash Recovery + Standby (TODO)
+**** TODO via WAL Archival (PITR) (TODO)
+I've not done this yet, will update when I get an opportunity to play around with it. But this is extremely similar to standby servers except the following gotchas/differences:
+- The settings(~postgresql.conf~) here are only needed for the duration of restore, once done they should be reset.
+- Instead of ~standby.signal~, we'd add ~recovery.signal~
+- Instead of the standby mode behavior, where it stays in "standby mode" until promoted, in archival/crash recovery, as soon as recovery is successful, the postgres server [[https://dba.stackexchange.com/questions/315999/postgresql-stops-continuous-recovery-without-error][will implicitly get promoted]] unlike standby mode.
+- Since recovery mode does implicit promotion, you cannot really run multiple recovery, if that's a usecase you probably need a standby instead of recovery. See [[https://github.com/wal-g/wal-g/issues/1780][this issue]] for more info.
+*** TODO Crash Recovery + Standby (TODO)
 #+begin_quote
 From [[https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY][PostgreSQL: Documentation: 16: 20.5. Write Ahead Log]]:
 
 "To start the server in targeted recovery mode, create a file called recovery.signal in the data directory. If both standby.signal and recovery.signal files are created, standby mode takes precedence. Targeted recovery mode ends when the archived WAL is fully replayed, or when recovery_target is reached. In this mode, the parameters from both this section and Section 20.5.6 will be used."
 #+end_quote
 This usecase is somewhat tricky to me and the can be combined with others things like streaming replication etc aswell.
+*** Failover
+#+begin_quote
+See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][PostgreSQL: Documentation: 16: 27.3. Failover]]. I am just dumping important points from there and some peronal notes
+#+end_quote
+- ~STONITH (Shoot The Other Node In The Head)~: If the primary server fails and the standby server becomes the new primary, and then the old primary restarts, you must have a mechanism for informing the old primary that it is no longer the primary. This is necessary to avoid situations where both systems think they are the primary, which will lead to confusion and ultimately data loss.
+- PostgreSQL does not provide the system software required to identify a failure on the primary and notify the standby database server.
+- To trigger failover of a log-shipping standby server, run pg_ctl promote or call pg_promote().
+*** Promotion
+#+begin_quote
+- Successful promotion will put the server in a new timeline, this is true for both crash recovery(implicit) and standby mode.
+- Once promotion is done, you [[https://stackoverflow.com/questions/59875106/multiple-times-point-in-time-recovery-in-postgresql][cannot go back.]] Basically, do not promote standby to primary if you want this standby to be able to apply WALs from other primary.
+#+end_quote
+- For recovery
+  - postgres implicitly(and automatically) gets promoted and the ~recovery.signal~ file is deleted on successful restore unless ~recovery_target_action~ is set to ~shutdown~.
+- For stanby
+  - postgres will NOT automatically promote anything, you'd need to manually call ~pg_ctl promote~
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres
 #+begin_quote
@@ -443,9 +427,19 @@ COPY --from=builder /srv/${PG_MAJOR}/pg_uuidv7.so /usr/lib/postgresql/${PG_MAJOR
 COPY --from=builder /srv/pg_uuidv7.control /usr/share/postgresql/${PG_MAJOR}/extension
 COPY --from=builder /srv/pg_uuidv7--1.5.sql /usr/share/postgresql/${PG_MAJOR}/extension
 #+end_src
-**** TODO Using ~dockerTools.fromImage~ (official docker image)
+**** Using ~dockerTools.fromImage~ (official docker image)
+#+begin_quote
+Update!
+I think i've found the issue mentioned in the following text, it's related to the shebang on top of the entrypoint file but eitheway I have dropped the idea of using ~fromImage~ for now and going all in on building it from nix derivations.
+
+[[https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130][Inconsistent treatment of /usr/bin/env in build sandbox vs. NixOS · Issue #1205 · NixOS/nix · GitHub]]
+
+Update 2!
+Because I was having difficulty building pg16.2 from nixpkgs, I ended up using this approach as I had an exsiting db using pg16.2 and I faced a [[https://community.fly.io/t/postgres-flex-database-postgres-has-a-collation-version-mismatch/14391][collation]] issue due to glibc version and I didn't want to REINDEX yet.
+#+end_quote
 - ~dockerTools~ allow you pull from another image. So since the official comes with the starter scripts that run initdb and it does a lot of other things. I thought it would be nice to just use it. But it didn't work out.
 - See [[https://discourse.nixos.org/t/building-on-dockerfile-based-images/29583][Building on dockerfile-based images - Help - NixOS Discourse]]
+
 #+begin_src nix
 # file: flake.nix
 let
@@ -475,20 +469,7 @@ in {
 };
 #+end_src
 
-While this seems like it works from the face of it. Unfortunately or fortunately, it doesn't. @NoobZ and @ManoftheSea from the unofficial NixOS discord channel talked me out of this and I stopped trying to make this work. If someone is interested to make this work, here is where I got stuck: "no such file or directory". I am not sure why this happened, arch is what it should be and base image is a docker image so should not be nixos fsh issues.
-
-#+begin_quote
-Update!
-I think i've found the issue, it's related to the shebang on top of the entrypoint file but eitheway I have dropped the idea of using ~fromImage~ for now and going all in on building it from nix derivations.
-
-[[https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130][Inconsistent treatment of /usr/bin/env in build sandbox vs. NixOS · Issue #1205 · NixOS/nix · GitHub]]
-
-Update 2!
-Because I was having difficulty building pg16.2 from nixpkgs, I ended up using this approach as I had an exsiting db using pg16.2 and I faced a [[https://community.fly.io/t/postgres-flex-database-postgres-has-a-collation-version-mismatch/14391][collation]] issue due to glibc version and I didn't want to REINDEX yet.
-#+end_quote
-
-Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
-
+While this seems like it works from the face of it. Unfortunately or fortunately, it doesn't. @NoobZ and @ManoftheSea from the unofficial NixOS discord channel talked me out of this and I stopped trying to make this work. If someone is interested to make this work, here is where I got stuck: "no such file or directory".
 #+begin_src bash
 λ just docker-build # success
 λ just docker-load # success
@@ -496,7 +477,9 @@ Trying to install nixpkgs pg extensions into the correct location in the image w
 exec /usr/local/bin/docker-entrypoint.sh: no such file or directory
 error: Recipe `docker-run` failed on line 36 with exit code 1
 #+end_src
-:(
+I am not sure why this happened, arch is what it should be and base image is a docker image so should not be nixos fsh issues.
+
+Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
 *** To explore later
-- Streaming replication
-- Compression of WAL logs, esp when setting archive_timeout before WAL hits 16MB wal segment size
+- [ ] Streaming replication
+- [ ] Compression of WAL logs, esp when setting archive_timeout before WAL hits 16MB wal segment size. It seems like the the empty WAL segments (due to early ~archive_timeout~ consume all 16M)
