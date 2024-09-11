@@ -1,4 +1,5 @@
 * nix-postgres-docker
+** Preface
 #+begin_quote
 I'd highly recommend reading the official docs, and only read this doc as supplement on how do some of these things fit in context of ~wal-g~:
 
@@ -22,6 +23,7 @@ How to deploy, how to add a connection pooler etc. are concerns which are out of
 #+end_quote
 ** Table of contents :TOC_5:
 - [[#nix-postgres-docker][nix-postgres-docker]]
+  - [[#preface][Preface]]
   - [[#context-and-the-problem][Context and the problem]]
   - [[#solution][Solution]]
     - [[#creating-the-docker-image--breakdown-of-postgres-docker-image][Creating the docker image / Breakdown of postgres docker image.]]
@@ -91,6 +93,8 @@ Gitlab has an amazing runbook for wal-g
 - https://archive.ph/83BLw
 
 My impression on ~wal-g~, while I think it's great software but it lacks heavily in documentation. I am not sure why such a widely adopted tool has such poor documentation(lot of undocumented cli features). Lot of conceptual things which are important to understand for something like managing backup are not mentioned at all. Fortunately, they've a super friendly and nice telegram and the developers hang around and help resolve issues. I'd personally like to work on the docs but I'll let things sink in for a while.
+
+~wal-g~ has a small catch that makes it little in-convenient to run base-backups from the host: https://github.com/wal-g/wal-g/issues/1782
 #+end_quote
 **** Command reference
 Following are ~wal-g~ commands, what they do and when to run them.
@@ -261,6 +265,19 @@ See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][Postgr
 **** Crash Recovery
 ***** via Streaming Replication
 ***** via WAL Archival (PITR)
+****** TODO Make changes to postgresql.conf for standby
+#+begin_src diff
+--- a/workloads/nomad/pg/postgresql.conf
++++ b/workloads/nomad/pg/postgresql.conf
+-archive_mode = on		# enables archiving; off, on, or always
++archive_mode = off		# enables archiving; off, on, or always
+-#restore_command = ''		# command to use to restore an archived WAL file
++restore_command = 'wal-g wal-fetch %f %p'
+-#recovery_target = ''		# 'immediate' to end recovery as soon as a consistent state is reached
++recovery_target = 'immediate'
+-#recovery_target_action = 'pause'	# 'pause', 'promote', 'shutdown'
++recovery_target_action = 'pause'	# 'pause', 'promote', 'shutdown'
+#+end_src
 **** Standby Servers (Async)
 ***** via Streaming Replication
 - You need it around to set ~primary_conninfo~, and ~hot_standby~. Those are the only two entries you need if you are purely streaming (not optionally getting from WAL archive as well
