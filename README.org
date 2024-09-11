@@ -21,7 +21,7 @@ Deploying postgres on containers is [[https://www.reddit.com/r/PostgreSQL/commen
 
 How to deploy, how to add a connection pooler etc. are concerns which are out of the scope of this repo at the moment. I'll keep this document focused on "how to setup WAL archival using WAL-G" when running postgres in a container.
 #+end_quote
-** Table of contents :TOC_5:
+** Table of contents :TOC_10:
 - [[#nix-postgres-docker][nix-postgres-docker]]
   - [[#preface][Preface]]
   - [[#context-and-the-problem][Context and the problem]]
@@ -34,6 +34,10 @@ How to deploy, how to add a connection pooler etc. are concerns which are out of
       - [[#restoration][Restoration]]
         - [[#step1-restoring-base-backup][Step1: Restoring base backup]]
         - [[#step2-restoring-the-wal][Step2: Restoring the WAL]]
+          - [[#config-reference][Config reference]]
+          - [[#standby-mode][Standby mode]]
+          - [[#targeted-recoverycrash-recoverydata-loss-recovery-mode][Targeted recovery/Crash recovery/Data loss recovery mode]]
+            - [[#promotion][Promotion]]
         - [[#other-gotchastips-when-restoring][Other gotchas/tips when restoring]]
       - [[#failover][Failover]]
       - [[#cleanup-and-maintenance][Cleanup and Maintenance]]
@@ -41,6 +45,7 @@ How to deploy, how to add a connection pooler etc. are concerns which are out of
       - [[#crash-recovery][Crash Recovery]]
         - [[#via-streaming-replication][via Streaming Replication]]
         - [[#via-wal-archival-pitr][via WAL Archival (PITR)]]
+          - [[#make-changes-to-postgresqlconf-for-standby][Make changes to postgresql.conf for standby]]
       - [[#standby-servers-async][Standby Servers (Async)]]
         - [[#via-streaming-replication-1][via Streaming Replication]]
         - [[#via-wal-archival-pitr-1][via WAL Archival (PITR)]]
