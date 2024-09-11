@@ -188,24 +188,6 @@ The official docs(pg16.04) are beter reference but just dumping here for an over
 |                              | ~recovery_target_inclusive~ | Related to ~recovery_target_[time/lsn/xid]~ for one-off adjustments                 | Yes(default:on)                  | N/A                                                  |
 |                              | ~recovery_target_timeline~  | The ~recovery_target_*~ can only belong to one timeline_id.                         | Yes(default:latest wal timeline) | N/A                                                  |
 |                              | ~recovery_target_action~    | What happens when restore completes (~pause/shutdown/promote~). see doc for details | Yes(default:pause)               | N/A                                                  |
-***** Step2: Restoring the WAL
-****** Targeted recovery/Crash recovery/Data loss recovery mode
-#+begin_quote
-- PITR, as I understand PITR, it's is not one single thing. It's the combination of all the different recovery targets, mechanism to do the backups and the concept of [[https://www.highgo.ca/2021/11/01/the-postgresql-timeline-concept/][postgres timeline]] etc. With the concept of timeline ID, it is possible that the same LSN or the same WAL segments exist in multiple timelines.
-- When using different a ~recovery_* target~ other than ~recovery_target~ and when ~recovery_target_action~, you can use ~pg_wal_replay_resume()~ to play/pause the recovery process. Eg. You want to manually check if some data is recovered or no etc. Like using a debugger with steps kind of. But usually this is not needed simply using ~recovery_target~ is enough for me.
-#+end_quote
-- create a file called ~recovery.signal~ in ~$PGDATA~.
-  - The server will enter recovery and will not stop recovery when the end of archived WAL is reached
-  - The ~recovery_*~ configuration control how this behaves (Eg. you can control for an earlier stopping point than end of WAL etc.)
-- Set the required ~recovery_*~ settings based on requirements
-  - Basic restore config for ~postgresql.conf~
-    - ~restore_command = wal-g wal-fetch %f %p~
-      - It needs the env vars: ~AWS_ACCESS_KEY_ID~, ~AWS_SECRET_ACCESS_KEY~, ~AWS_ENDPOINT~, ~WALG_S3_PREFIX~ if you're using a s3 backend(blackblaze)
-    - Unset ~archive_command~ for the postgres instance we're restoring as we don't want it to be pushing ~archive_command~ immediately after getting restored(we'd want to verify things are working etc.) Or maybe just set ~archive_mode~ to ~off~ till the restoration process finishes and everything is checked. (Important: See  [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][consequence here]])
-    - ~recovery_target = 'immediate'~
-- Start the postgres server in recovery mode (by virtue of ~recovery.signal~)
-- This should do the recovery till you reach ~recovery_target_action~.
-- If everything looks good, remove the ~recovery.signal~ file from ~$PGDATA~.
 ***** Other gotchas/tips when restoring
 - Gotchas & Behavior
   - ~.history~ errors in the logs that's expected when doing crash recovery: [[https://github.com/wal-g/wal-g/issues/628][wal-g/wal-g#628 Error: 2020/04/12 19:10:09.300784 Archive '00000002.history']]
@@ -276,7 +258,7 @@ wal-g backup-fetch $PATH_TO_PGDATA LATEST
 - In case of running postgres in a container
   - You'd want to run ~backup-fetch~ on the host to whatever the ~$PGDATA~ directory should be. And when that ~$PGDATA~ gets mounted into the container make sure its given appropriate permissions etc.
   - In case of using the official postgres image in a non-rootless/rootfull environment, postgres uses [[https://github.com/tianon/gosu][gosu]], so you can in-fact run ~backup-fetch~ as root and you should be fine. Whether this is a good idea? ¯\_(ツ)_/¯
-***** Make changes to ~postgresql.conf~ for standby
+***** Make changes to ~postgresql.conf~ and ~$PGDATA~ for standby
 - Add ~standby.signal~ inside ~$PGDATA~, this will tell postgres to start in standby mode. If you don't specify this and yet have a ~restore_command~, pg will safely error out.
 - Update standby settings in ~postgresql.conf~
   #+begin_src diff
@@ -301,16 +283,37 @@ wal-g backup-fetch $PATH_TO_PGDATA LATEST
 - These can be either warm or hot
 #+end_quote
 - I've not done this yet
-*** Crash Recovery
+*** Crash Recovery (PITR)
+#+begin_quote
+- PITR, as I understand PITR, it's is not one single thing. It's the combination of all the different recovery targets, mechanism to do the backups and the concept of [[https://www.highgo.ca/2021/11/01/the-postgresql-timeline-concept/][postgres timeline]] etc. With the concept of timeline ID, it is possible that the same LSN or the same WAL segments exist in multiple timelines.
+- When using different a ~recovery_* target~ other than ~recovery_target~ and when ~recovery_target_action~, you can use ~pg_wal_replay_resume()~ to play/pause the recovery process. Eg. You want to manually check if some data is recovered or no etc. Like using a debugger with steps kind of. But usually this is not needed simply using ~recovery_target~ is enough for me.
+#+end_quote
 **** via Streaming Replication (TODO)
 - I've not done this yet
 - I don't completely understand this scenario because after recovery, the recovery pg instance would implicitly be promoted but doing this via streaming replication means the primary is live. So in which case do we even need this?
-**** TODO via WAL Archival (PITR) (TODO)
-I've not done this yet, will update when I get an opportunity to play around with it. But this is extremely similar to standby servers except the following gotchas/differences:
+**** via WAL Archival (PITR)
+***** Differences with standby mode/servers
+This is similar to standby servers with the following gotchas/differences(there'll be more ofc):
 - The settings(~postgresql.conf~) here are only needed for the duration of restore, once done they should be reset.
 - Instead of ~standby.signal~, we'd add ~recovery.signal~
 - Instead of the standby mode behavior, where it stays in "standby mode" until promoted, in archival/crash recovery, as soon as recovery is successful, the postgres server [[https://dba.stackexchange.com/questions/315999/postgresql-stops-continuous-recovery-without-error][will implicitly get promoted]] unlike standby mode.
 - Since recovery mode does implicit promotion, you cannot really run multiple recovery, if that's a usecase you probably need a standby instead of recovery. See [[https://github.com/wal-g/wal-g/issues/1780][this issue]] for more info.
+***** Fetch the base backup
+This is same as done for standby servers
+***** Make changes to ~postgresql.conf~ and ~$PGDATA~ for recovery
+- Add ~recovery.signal~ inside ~$PGDATA~, this will tell postgres to start in recovery mode.
+  - The server will enter recovery and will not stop recovery when the end of archived WAL is reached, after which it'll implicitly promote itself/do what ~recovery_target_action~ is set to.
+  - The ~recovery_*~ configuration control how this behaves (Eg. you can control for an earlier stopping point than end of WAL etc.)
+- Update recovery settings in ~postgresql.conf~
+  #+begin_src diff
+--- a/workloads/nomad/postgres/postgresql.conf
++++ b/workloads/nomad/postgres/postgresql.conf
+-archive_mode = on      # enables archiving; off, on, or always
++archive_mode = off     # enables archiving; off, on, or always
+-#restore_command = ''  # command to use to restore an archived WAL file
++restore_command = 'wal-g wal-fetch %f %p'
+  #+end_src
+- After adding in these changes, one should be able to successfully recover from WAL archive.
 *** TODO Crash Recovery + Standby (TODO)
 #+begin_quote
 From [[https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-CONFIG-WAL-ARCHIVE-RECOVERY][PostgreSQL: Documentation: 16: 20.5. Write Ahead Log]]:
@@ -318,14 +321,15 @@ From [[https://www.postgresql.org/docs/current/runtime-config-wal.html#RUNTIME-C
 "To start the server in targeted recovery mode, create a file called recovery.signal in the data directory. If both standby.signal and recovery.signal files are created, standby mode takes precedence. Targeted recovery mode ends when the archived WAL is fully replayed, or when recovery_target is reached. In this mode, the parameters from both this section and Section 20.5.6 will be used."
 #+end_quote
 This usecase is somewhat tricky to me and the can be combined with others things like streaming replication etc aswell.
-*** Failover
+*** Related concepts
+**** Failover
 #+begin_quote
 See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][PostgreSQL: Documentation: 16: 27.3. Failover]]. I am just dumping important points from there and some peronal notes
 #+end_quote
 - ~STONITH (Shoot The Other Node In The Head)~: If the primary server fails and the standby server becomes the new primary, and then the old primary restarts, you must have a mechanism for informing the old primary that it is no longer the primary. This is necessary to avoid situations where both systems think they are the primary, which will lead to confusion and ultimately data loss.
 - PostgreSQL does not provide the system software required to identify a failure on the primary and notify the standby database server.
 - To trigger failover of a log-shipping standby server, run pg_ctl promote or call pg_promote().
-*** Promotion
+**** Promotion
 #+begin_quote
 - Successful promotion will put the server in a new timeline, this is true for both crash recovery(implicit) and standby mode.
 - Once promotion is done, you [[https://stackoverflow.com/questions/59875106/multiple-times-point-in-time-recovery-in-postgresql][cannot go back.]] Basically, do not promote standby to primary if you want this standby to be able to apply WALs from other primary.
@@ -334,6 +338,13 @@ See [[https://www.postgresql.org/docs/current/warm-standby-failover.html][Postgr
   - postgres implicitly(and automatically) gets promoted and the ~recovery.signal~ file is deleted on successful restore unless ~recovery_target_action~ is set to ~shutdown~.
 - For stanby
   - postgres will NOT automatically promote anything, you'd need to manually call ~pg_ctl promote~
+**** ~archive_mode~ when recovery/standby
+There is some confusion around whether to keep ~archive_mode~ on when running a recovery server/standby server.
+- To be safe, I unset ~archive_command~ or set ~archive_mode=off~ for the standby/recovery postgres instance.
+  - I don't want it to be pushing ~archive_command~ immediately after getting restored(I'd want to verify things are working etc.)
+- After I verify, I manually re-set ~archive_command~ and re-trigger a base-backup from the new replica/recovered instance.
+- I am not sure what's the best approach is, just something that works for me.
+- Confusion: [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][instance where setting archive_command]] messed things up, but  [[https://stackoverflow.com/questions/24007152/disabling-wal-archiving-during-pg-restore][this discussion]] recommending against it. (I think it's talking about disabling ~archive_command~ in the primary, whereas in my case I am talking about not having ~archive_command~ in the restore/standby instance)
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres
 #+begin_quote
