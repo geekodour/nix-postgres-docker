@@ -3,31 +3,63 @@ pg_data := "./restoredb"
 default:
 	just --list
 
-#####################
-# Restore
-#####################
+############################################
+# Restore WAL Archival (Crash Recovery)
+############################################
 # Usage
 # 1. restore-base-backup
 # 2. restore-add-crash-recovery-signal
 # 3. start pg
+# 4. after successful
 
 restore-base-backup:
 	wal-g backup-fetch {{pg_data}} LATEST
 
+# NOTE: After successful recovery, the recovery.signal file will automatically
+# 		be deleted unless recovery_target_action is "shutdown"
 restore-add-crash-recovery-signal:
 	touch {{pg_data}}/recovery.signal
 
-restore-remove-crash-recovery-signal:
-	rm {{pg_data}}/recovery.signal
+restore-remove-standby-signal:
+	rm {{pg_data}}/standby.signal
 
 # NOTE: If running postgres directly on the server, the postgresql.conf file
 # 		will be inside $PGDATA. But If you're running postgres in a container
 # 		via an orchestrator, you might be bind mounting the custom
 # 		postgresql.conf file into the $PGDATA/postgresql.conf, in those cases:
-# 		- for testing locally: You might want specify the config file explicitly using --config-file=<path to config file>
-# 		- for restoring in the container: TODO TODO
+# 		- for testing locally:
+# 		  - You might want specify the config file explicitly using
+# 		  	--config-file=<path to config file>
+# 		  - Prior to that you'd add the restore_command and recovery_*
+# 		  	configurations appropriately.
+# 		- for restoring in the container:
+# 		  - You'd modify the postgresql.conf to be mounted to the container
+# 			with the restore_command and recovery_* configurations
+# 			appropriately
 restore-start-pg:
-	postgres -D {{pg_data}} -c
+	#!/usr/bin/env bash
+	set -euxo pipefail
+	cat << EOF
+	Do set:
+	restore_command = 'wal-g wal-fetch %f %p'
+	archive_command = '/bin/true' # or unset
+
+	Before progressing with this command. Once the replica/restored backup is
+	working as expected, re-set archive_command if needed.
+
+	EOF
+	postgres -D {{pg_data}} --config-file=./postgresql.conf
+
+#################################################
+# Restore WAL Archival (Standby)
+#################################################
+
+standby-add-signal:
+	touch {{pg_data}}/standby.signal
+
+# NOTE: This must be run while the server is running (this will crete a new timeline)
+standby-promote:
+	PGDATA={{pg_data}} pg_ctl promote
 
 #####################
 # Listing
@@ -41,7 +73,12 @@ list-detail:
 #####################
 # Cleanup
 #####################
-# NOTE: If you run "delete retain", usually you don't need to run garbage
+# Usage
+# - You need to use --confirm to actually makes the deletes
+# - If you run "delete retain", usually you don't need to run garbage
+# - You would generally configure these to run periodically based on your backup
+# 	policy
+
 delete-garbage-dry-run:
     wal-g delete garbage
 
@@ -54,14 +91,14 @@ delete-retain-only-last-2-dry-run:
 #####################
 # Others
 #####################
-# NOTE: needs pg access
 integrity:
-    wal-g wal-verify integrity
+    wal-g wal-verify integrity # NOTE: needs pg access
 
-# NOTE: needs pg access
 timeline:
-	wal-g wal-verify timeline
+	wal-g wal-verify timeline # NOTE: needs pg access
 
+# NOTE: mount is very on HEAD OBJECT API calls
+# 		https://github.com/wal-g/wal-g/issues/1783
 mount:
 	mkdir -p ./temp
 	@echo "remote to mount, ctrl+c to unmount."

@@ -1,6 +1,7 @@
 * nix-postgres-docker
 #+begin_quote
-I think before or after reading this it is essential to at-least read these postgres official docs:
+I'd highly recommend reading the official docs, and only read this doc as supplement on how do some of these things fit in context of ~wal-g~:
+
 - [[https://www.postgresql.org/docs/current/runtime-config-wal.html][PostgreSQL: Documentation: 16: 20.5. Write Ahead Log]]
 - [[https://www.postgresql.org/docs/current/wal-configuration.html][PostgreSQL: Documentation: 16: 30.5. WAL Configuration]]
 - [[https://www.postgresql.org/docs/current/backup.html][PostgreSQL: Documentation: 16: Chapter 26. Backup and Restore]]
@@ -8,6 +9,8 @@ I think before or after reading this it is essential to at-least read these post
 - [[https://www.postgresql.org/docs/current/warm-standby.html][PostgreSQL: Documentation: 16: 27.2. Log-Shipping Standby Servers]]
 - [[https://www.postgresql.org/docs/current/warm-standby-failover.html][PostgreSQL: Documentation: 16: 27.3. Failover]]
 - [[https://www.postgresql.org/docs/current/hot-standby.html][PostgreSQL: Documentation: 16: 27.4. Hot Standby]]
+- [[https://www.postgresql.org/docs/current/runtime-config-replication.html][PostgreSQL: Documentation: 16: 20.6. Replication]]
+- [[https://www.postgresql.org/docs/current/protocol-replication.html][PostgreSQL: Documentation: 16: 55.4. Streaming Replication Protocol]]
 #+end_quote
 
 #+begin_quote
