@@ -25,7 +25,7 @@ All of the things mentioned in this document is very much my experience playing 
 
 For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
 #+end_quote
-** Table of contents :TOC_10:
+** Table of contents :TOC_9:
 - [[#nix-postgres-docker][nix-postgres-docker]]
   - [[#preface][Preface]]
   - [[#context-and-the-problem][Context and the problem]]
@@ -35,37 +35,37 @@ For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
       - [[#command-reference][Command reference]]
       - [[#making-base-backup][Making base backup]]
       - [[#running-wal-archival][Running WAL archival]]
-      - [[#restoration][Restoration]]
-        - [[#step1-restoring-base-backup][Step1: Restoring base backup]]
-        - [[#step2-restoring-the-wal][Step2: Restoring the WAL]]
-          - [[#config-reference][Config reference]]
-          - [[#standby-mode][Standby mode]]
-          - [[#targeted-recoverycrash-recoverydata-loss-recovery-mode][Targeted recovery/Crash recovery/Data loss recovery mode]]
-            - [[#promotion][Promotion]]
+      - [[#restorationstandby][Restoration/Standby]]
+        - [[#postgres-restore-related-command-reference][postgres restore related command reference]]
         - [[#other-gotchastips-when-restoring][Other gotchas/tips when restoring]]
-      - [[#failover][Failover]]
       - [[#cleanup-and-maintenance][Cleanup and Maintenance]]
-    - [[#usecases][Usecases]]
-      - [[#crash-recovery][Crash Recovery]]
-        - [[#via-streaming-replication][via Streaming Replication]]
-        - [[#via-wal-archival-pitr][via WAL Archival (PITR)]]
-          - [[#make-changes-to-postgresqlconf-for-standby][Make changes to postgresql.conf for standby]]
-      - [[#standby-servers-async][Standby Servers (Async)]]
-        - [[#via-streaming-replication-1][via Streaming Replication]]
-        - [[#via-wal-archival-pitr-1][via WAL Archival (PITR)]]
-      - [[#standby-servers-sync][Standby Servers (Sync)]]
-        - [[#via-streaming-replication-2][via Streaming Replication]]
-      - [[#crash-recovery--standby][Crash Recovery + Standby]]
-    - [[#combining-streaming-replication--pitr-todo][Combining streaming replication + PITR (TODO)]]
-      - [[#usecase-of-standby-vs-crash-recovery][Usecase of standby vs crash recovery]]
+  - [[#restoration-crash-recovery-and-standby][Restoration, Crash Recovery and Standby]]
+    - [[#standby-servers-async][Standby Servers (Async)]]
+      - [[#via-streaming-replication-todo][via Streaming Replication (TODO)]]
+      - [[#via-wal-archival-pitr][via WAL Archival (PITR)]]
+        - [[#fetch-the-base-backup][Fetch the base backup]]
+        - [[#make-changes-to-postgresqlconf-and-pgdata-for-standby][Make changes to ~postgresql.conf~ and ~$PGDATA~ for standby]]
+        - [[#promote-as-needed][Promote as needed]]
+    - [[#standby-servers-sync-only-via-streaming-replication-todo][Standby Servers (Sync) (ONLY via Streaming Replication) (TODO)]]
+    - [[#crash-recovery-pitr][Crash Recovery (PITR)]]
+      - [[#via-streaming-replication-todo-1][via Streaming Replication (TODO)]]
+      - [[#via-wal-archival-pitr-1][via WAL Archival (PITR)]]
+        - [[#differences-with-standby-modeservers][Differences with standby mode/servers]]
+        - [[#fetch-the-base-backup-1][Fetch the base backup]]
+        - [[#make-changes-to-postgresqlconf-and-pgdata-for-recovery][Make changes to ~postgresql.conf~ and ~$PGDATA~ for recovery]]
+    - [[#crash-recovery--standby-todo][Crash Recovery + Standby (TODO)]]
+    - [[#related-concepts][Related concepts]]
+      - [[#failover][Failover]]
+      - [[#promotion][Promotion]]
+      - [[#archive_mode-when-recoverystandby][~archive_mode~ when recovery/standby]]
   - [[#other-notesreferences][Other notes/references]]
-    - [[#aside-on-backup-ecosystem-in-postgres][Aside on Backup ecosystem in Postgres]]
+    - [[#aside-on-backup-ecosystem-in-postgres-todo][Aside on Backup ecosystem in Postgres (TODO)]]
       - [[#replication-vs-backup][Replication vs Backup]]
     - [[#everything-works-except-archive_command][Everything works except ~archive_command~!]]
     - [[#previous-attempts][Previous attempts]]
       - [[#creating-normal-dockerfile-official-docker-image][Creating normal Dockerfile (official docker image)]]
       - [[#using-dockertoolsfromimage-official-docker-image][Using ~dockerTools.fromImage~ (official docker image)]]
-    - [[#wal-g-issues][WAL-G issues]]
+  - [[#to-explore-later][To explore later]]
 
 ** Context and the problem
 To give you the context, I've been happily running postgres in my homelab without a backup(who needs one anyway) but then I planned on doing a user facing side project for which I decided, will use the same pg cluster. But now, even though I'll get only 2 users it's my duty to ensure that their data remains intact despite of the unfathomable amount of fuckery i am about to unleash on my homelab servers. So, in conclusion, i need a backup policy for the database.
@@ -346,7 +346,7 @@ There is some confusion around whether to keep ~archive_mode~ on when running a 
 - I am not sure what's the best approach is, just something that works for me.
 - Confusion: [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][instance where setting archive_command]] messed things up, but  [[https://stackoverflow.com/questions/24007152/disabling-wal-archiving-during-pg-restore][this discussion]] recommending against it. (I think it's talking about disabling ~archive_command~ in the primary, whereas in my case I am talking about not having ~archive_command~ in the restore/standby instance)
 ** Other notes/references
-*** TODO Aside on Backup ecosystem in Postgres
+*** TODO Aside on Backup ecosystem in Postgres (TODO)
 #+begin_quote
 This section is todo, I'll update later.
 #+end_quote
@@ -491,6 +491,6 @@ error: Recipe `docker-run` failed on line 36 with exit code 1
 I am not sure why this happened, arch is what it should be and base image is a docker image so should not be nixos fsh issues.
 
 Trying to install nixpkgs pg extensions into the correct location in the image would've been a real hassle.
-*** To explore later
+** To explore later
 - [ ] Streaming replication
 - [ ] Compression of WAL logs, esp when setting archive_timeout before WAL hits 16MB wal segment size. It seems like the the empty WAL segments (due to early ~archive_timeout~ consume all 16M)
