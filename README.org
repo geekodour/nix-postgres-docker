@@ -200,11 +200,12 @@ Restoring and standby is pretty involved, I've created a separate higher level s
 - All of the places where streaming replication can be applied, it can either be [[https://www.postgresql.org/docs/current/wal-async-commit.html][sync or async]] , sync replication is not possible with WAL archival as it operates at commit level and WAL archival works at WAL segment level.
 - ~.history~ errors in the logs are expected when doing crash recovery: [[https://github.com/wal-g/wal-g/issues/628][wal-g/wal-g#628]]
 - Order of operations matter: [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][Failed Postgres Replication from master to standby]]
+- ~hot_standby~ is now ~on~ by default. So if you create a standby server, you'll be able to do reads on it as archives are fetches. Essentially a read replica.
 #+end_quote
 | Combination                     | SR protocol | WAL Archival (PITR) / File based / Log shipping      | Notes                                                         | Doubts                                                          |
 |---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
 | Warm Standby                    | No          | ~standby.signal~                                       | primary & standby (~archive_command~ <=> ~restore_command~)       |                                                                 |
-| Hot Standby                     | No          | ~standby.signal~ + ~hot_standby=on~                      | warm standby + read-only                                      |                                                                 |
+| Hot Standby                     | No          | ~standby.signal~ + ~hot_standby=on~ (default)            | warm standby + read-only                                      |                                                                 |
 |---------------------------------+-------------+------------------------------------------------------+---------------------------------------------------------------+-----------------------------------------------------------------|
 | Warm Standby                    | Yes         | No                                                   | This is no backup, just replicas (~primary_conninfo~ et al)     |                                                                 |
 | Hot Standby                     | Yes         | No                                                   | This is no backup, just replicas (~primary_conninfo~ et al)     |                                                                 |
@@ -260,7 +261,8 @@ wal-g backup-fetch $PATH_TO_PGDATA LATEST
   - See [[https://github.com/wal-g/wal-g/issues/1775][this issue]] for an example of this behavior.
 ***** Promote as needed
 - Once you know that the "current" primary is no longer going to push new WAL logs/data, you can simply shutdown the primary and promote the stanby as per need.
-- You can promote a standby by running ~pg_ctl promote~ or calling ~pg_promote()~. This will also delete the ~standby.signal~ file.
+- You can promote a standby by running ~pg_ctl promote~ or calling ~pg_promote()~. This will also delete the ~standby.signal~ file. If you're running postgres in an container, exec into the container as the ~postgres~ user and run ~pg_ctl promote~
+- After promoting you may want to remove/comment the ~restore_command~ config, it'll not be picked up anyway by postgres but better to comment it out imo.
 *** Standby Servers (Sync) (ONLY via Streaming Replication) (TODO)
 #+begin_quote
 - Synchronous standby servers cannot happen without postgres streaming replication protocol, hence won't work with WAL archival.
