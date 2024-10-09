@@ -1,4 +1,4 @@
-name: "build-push-postgres"
+name: "build-push-postgres-16_2"
 on:
   push:
     branches: [main]
@@ -33,9 +33,9 @@ jobs:
             github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Build & push docker image
         run: |
-             nix develop .#ci --command just docker-build
-             nix develop .#ci --command just docker-load
-             nix develop .#ci --command just docker-push
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-build
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-load
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-push
   push_manifest:
     needs: build_push
     runs-on: ubuntu-latest
@@ -51,4 +51,4 @@ jobs:
             github-token: ${{ secrets.GITHUB_TOKEN }}
       - uses: DeterminateSystems/magic-nix-cache-action@main
       - name: push docker manifest image
-        run: nix develop .#ci --command just docker-manifest-push
+        run: nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-manifest-push

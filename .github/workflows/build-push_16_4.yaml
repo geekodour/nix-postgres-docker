@@ -1,0 +1,54 @@
+name: "build-push-postgres-16_4"
+on:
+  push:
+    branches: [main]
+
+# in case of back-to-back deploy, we cancel older deploy
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  # id-token: write # This is required for requesting the JWT
+  contents: read  # This is required for actions/checkout
+
+env:
+  IMAGE_TAG: 16_4
+
+jobs:
+  build_push:
+    runs-on: ${{ matrix.profile }}
+    strategy:
+      matrix:
+        profile: [namespace-profile-default, namespace-profile-default-arm64]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build & push docker image
+        run: |
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-build
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-load
+             nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-push
+  push_manifest:
+    needs: build_push
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to Docker Hub
+        uses: docker/login-action@f4ef78c080cd8ba55a85445d5b36e214a81df20a
+        with:
+          username: ${{ secrets.DOCKER_USERNAME }}
+          password: ${{ secrets.DOCKER_PASSWORD }}
+      - uses: DeterminateSystems/nix-installer-action@main
+        with:
+            github-token: ${{ secrets.GITHUB_TOKEN }}
+      - uses: DeterminateSystems/magic-nix-cache-action@main
+      - name: push docker manifest image
+        run: nix develop .#ci --command just --set image_id ${{ env.IMAGE_TAG }} docker-manifest-push
