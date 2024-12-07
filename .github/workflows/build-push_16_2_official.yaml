@@ -1,4 +1,4 @@
-name: "build-push-postgres-16_2_official"
+name: "build-push-postgres-16_2_w_pg_cron"
 on:
   push:
     branches: [main]
@@ -13,7 +13,7 @@ permissions:
   contents: read  # This is required for actions/checkout
 
 env:
-  DOCKER_REPOSITORY: postgres_official
+  DOCKER_REPOSITORY: postgres_w_pg_cron
   IMAGE_TAG: latest
 
 jobs:
