@@ -68,7 +68,7 @@
             # NOTE: This is based on the official 16.4 postgres dockerfile
             #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
             pg_16_4 = let
-              pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7]);
+              pg = pkgs.postgresql_16.withPackages (p: [p.pg_uuidv7 p.pg_cron]);
             in pkgs.dockerTools.buildLayeredImage  {
                 name = builtins.getEnv "IMAGE_NAME";
                 tag = builtins.getEnv "IMAGE_TAG";
