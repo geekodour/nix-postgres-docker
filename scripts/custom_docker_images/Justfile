@@ -1,0 +1,20 @@
+docker_build_cache := "$PROJECT_DATA_DIR/docker_build_cache"
+image_repo := "geekodour"
+image_name := "postgres"
+image_id := "16_2"
+platform := "amd64"
+image_tag := image_id + "_" + platform
+
+default:
+  @just --list
+
+# Build docker image for local use
+docker-build:
+    docker buildx build --tag {{image_repo}}/{{image_name}}:{{image_tag}} .
+
+docker-run:
+	docker run --rm \
+	-e POSTGRES_PASSWORD=123 \
+	-p 5432:5432 \
+	-v ./.pg_data:/var/lib/postgresql/data \
+	-it {{image_repo}}/{{image_name}}:{{image_tag}}
