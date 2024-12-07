@@ -35,7 +35,7 @@ jobs:
         uses: docker/build-push-action@v5
         with:
           push: true
-          context: script/custom_docker_images
+          context: scripts/custom_docker_images
           file: script/custom_docker_images/Dockerfile
           tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env.IMAGE_TAG }}"
           cache-from: type=gha
