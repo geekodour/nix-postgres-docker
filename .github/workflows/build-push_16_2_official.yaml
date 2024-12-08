@@ -1,4 +1,4 @@
-name: "build-push-postgres-16_2_w_pg_cron"
+name: "build-push-postgres-16_2_vanilla_w_pg_cron"
 on:
   push:
     branches: [main]
@@ -41,8 +41,6 @@ jobs:
           push: true
           context: scripts/custom_docker_images
           file: scripts/custom_docker_images/Dockerfile
-          # tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env.IMAGE_TAG }}"
-          # tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env. IMAGE_TAG }}_${{ matrix.profile }}"
           tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env. IMAGE_TAG }}_${{ matrix.platform }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max

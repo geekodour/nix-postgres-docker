@@ -36,7 +36,8 @@ docker-load:
 docker-run:
 	docker run --rm \
 	-v ./.data/pg_data:/var/lib/postgresql/data \
-	-e POSTGRES_PASSWORD=mysecretpassword \
+	-e POSTGRES_PASSWORD=123 \
+	-p 5432:5432 \
 	-it {{image_repo}}/{{image_name}}:{{image_tag}}
 
 docker-push:

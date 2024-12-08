@@ -9,6 +9,7 @@
       systems = [ "x86_64-linux" "aarch64-linux" ];
       perSystem = { config, pkgs, system, ... }: let
           # nix run nixpkgs#nix-prefetch-docker -- postgres --image-tag 16.2-bookworm --arch amd64 --os linux
+          # vanilla pg images
           pg_amd64 = pkgs.dockerTools.pullImage {
             imageName = "postgres";
             imageDigest = "sha256:4aea012537edfad80f98d870a36e6b90b4c09b27be7f4b4759d72db863baeebb";
@@ -27,6 +28,26 @@
             os = "linux";
             arch = "arm64";
           };
+
+          # vanilla pg images w extensions installed in the image itself
+          pg_amd64_w_ext = pkgs.dockerTools.pullImage {
+            imageName = "geekodour/postgres_w_pg_cron";
+            imageDigest = "sha256:3848c4b97c37180ef2e81994199dab9811c7520ff8228026093d1ff4197cc118";
+            sha256 = "sha256-+6C8GTD1Nz7gJRLg9KBj940ZNJOAgSNg6hoRi3XzSUI=";
+            finalImageName = "postgres";
+            finalImageTag = "16.2-bookworm";
+            os = "linux";
+            arch = "amd64";
+          };
+          pg_arm64_w_ext = pkgs.dockerTools.pullImage {
+            imageName = "geekodour/postgres_w_pg_cron";
+            imageDigest = "sha256:133b5c48d6a7a9475a4bd2ccf3a5ffe409311fd0531142a4ab02b43214c9714b";
+            sha256 = "";
+            finalImageName = "postgres";
+            finalImageTag = "16.2-bookworm";
+            os = "linux";
+            arch = "arm64";
+          };
         in
         {
           packages = {
@@ -34,7 +55,8 @@
             in pkgs.dockerTools.buildLayeredImage  {
               name = builtins.getEnv "IMAGE_NAME";
               tag = builtins.getEnv "IMAGE_TAG";
-              fromImage = if system == "x86_64-linux" then pg_amd64 else pg_arm64;
+              # fromImage = if system == "x86_64-linux" then pg_amd64 else pg_arm64;
+              fromImage = if system == "x86_64-linux" then pg_amd64_w_ext else pg_arm64_w_ext;
               # NOTE /usr/bin/env patch
               #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
               # NOTE /bin/sh patch
@@ -64,6 +86,41 @@
                 Cmd = ["postgres"];
               };
             };
+
+            # pg_16_2_w_ext = let
+            # in pkgs.dockerTools.buildLayeredImage  {
+            #   name = builtins.getEnv "IMAGE_NAME";
+            #   tag = builtins.getEnv "IMAGE_TAG";
+            #   fromImage = if system == "x86_64-linux" then pg_amd64_w_ext else pg_arm64_w_ext;
+            #   # NOTE /usr/bin/env patch
+            #   #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
+            #   # NOTE /bin/sh patch
+            #   #      because of this archive_command was failing in the modified container image
+            #   #      see https://github.com/NixOS/nix/issues/1205#issuecomment-2161613130
+            #   fakeRootCommands = ''
+            #   ${pkgs.dockerTools.shadowSetup}
+            #   groupadd -r postgres
+            #   useradd -r -g postgres --home-dir=/var/lib/postgresql postgres
+            #   install --verbose --directory --owner postgres --group postgres --mode 1777 /var/lib/postgresql
+            #   install --verbose --directory --owner postgres --group postgres --mode 3777 /var/run/postgresql
+            #   install --verbose --directory --owner postgres --group postgres --mode 3777 /run/postgresql
+            #   mkdir /docker-entrypoint-initdb.d
+
+            #   mkdir -m 0755 -p /usr/bin
+            #   ln -sfn "${pkgs.coreutils}/bin/env" /usr/bin/env
+            #   ln -sfn "${pkgs.bash}/bin/sh" /bin/sh
+            #   '';
+            #   enableFakechroot = true;
+            #   contents = with pkgs; [
+            #     cacert
+            #     wal-g
+            #   ];
+            #   config = {
+            #     # Entrypoint = [ "${pkgs.bashInteractive}/bin/bash" ]; # uncomment for debugging
+            #     Entrypoint = [ "docker-entrypoint.sh" ];
+            #     Cmd = ["postgres"];
+            #   };
+            # };
 
             # NOTE: This is based on the official 16.4 postgres dockerfile
             #       see https://github.com/docker-library/postgres/blob/3a94d965ecbe08f4b1b255d3ed9ccae671a7a984/16/bookworm/Dockerfile
