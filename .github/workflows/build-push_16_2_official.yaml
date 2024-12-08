@@ -21,7 +21,9 @@ jobs:
     runs-on: ${{ matrix.profile }}
     strategy:
       matrix:
-        profile: [namespace-profile-default, namespace-profile-default-arm64]
+        # profile: [namespace-profile-default, namespace-profile-default-arm64]
+        - {name: namespace-profile-default, platform: amd64}
+        - {name: namespace-profile-default-arm64, platform: arm64}
     outputs:
       image_source: ${{steps.build_push_image.outputs.image}}
     steps:
@@ -37,6 +39,7 @@ jobs:
           push: true
           context: scripts/custom_docker_images
           file: scripts/custom_docker_images/Dockerfile
-          tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          # tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env.IMAGE_TAG }}"
+          tags: "${{ secrets.DOCKER_USERNAME }}/${{ env.DOCKER_REPOSITORY }}:${{ env. IMAGE_TAG }}_${{ matrix.profile.platform }}"
           cache-from: type=gha
           cache-to: type=gha,mode=max
