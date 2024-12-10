@@ -43,6 +43,7 @@ For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
       - [[#via-streaming-replication-todo][via Streaming Replication (TODO)]]
       - [[#via-wal-archival-pitr][via WAL Archival (PITR)]]
         - [[#fetch-the-base-backup][Fetch the base backup]]
+        - [[#special-usecase-restore-only-with-base-backup][Special Usecase: Restore only with base backup]]
         - [[#make-changes-to-postgresqlconf-and-pgdata-for-standby][Make changes to ~postgresql.conf~ and ~$PGDATA~ for standby]]
         - [[#promote-as-needed][Promote as needed]]
     - [[#standby-servers-sync-only-via-streaming-replication-todo][Standby Servers (Sync) (ONLY via Streaming Replication) (TODO)]]
@@ -57,6 +58,7 @@ For actual commands that I've tested, check the ~./Justfile.wal-g.example~ file.
       - [[#failover][Failover]]
       - [[#promotion--timeline][Promotion & Timeline]]
       - [[#whether-to-set-archive_mode-when-recoverystandby][Whether to set ~archive_mode~ when recovery/standby]]
+      - [[#wal-generation][WAL generation]]
   - [[#other-notesreferences][Other notes/references]]
     - [[#aside-on-backup-ecosystem-in-postgres-todo][Aside on Backup ecosystem in Postgres (TODO)]]
       - [[#replication-vs-backup][Replication vs Backup]]
@@ -229,27 +231,46 @@ This section is about running a "standby server" with ~restore_command~ + ~stand
 #+end_quote
 ***** Fetch the base backup
 #+begin_src bash
-export AWS_ENDPOINT=
-export WALG_S3_PREFIX=
+export AWS_ENDPOINT= # optional
+export WALG_S3_PREFIX= # eg. s3://<bucket_name>/app_pg
 export AWS_ACCESS_KEY_ID=
 export AWS_SECRET_ACCESS_KEY=
-export PATH_TO_PGDATA=
+export AWS_REGION= # optional if region already specified in endpoint
+export PATH_TO_PGDATA=/srv/data/pg_data
 
 wal-g backup-fetch $PATH_TO_PGDATA LATEST
 #+end_src
+- For ~100GB data, it took about 15mins with 30MB/s + extraction
 - This is more of a one time manual thing
 - Find a place where you want to restore the base backup to, this will usually be the ~$PGDATA~ of the new postgres server to be restored/standby to be created.
 - Use ~wal-g backup-fetch~ to fetch the base backup you want.
 - In case of running postgres in a container
   - You'd want to run ~backup-fetch~ on the host to whatever the ~$PGDATA~ directory should be. And when that ~$PGDATA~ gets mounted into the container make sure its given appropriate permissions etc.
   - In case of using the official postgres image in a non-rootless/rootfull environment, postgres uses [[https://github.com/tianon/gosu][gosu]], so you can in-fact run ~backup-fetch~ as root and you should be fine. Whether this is a good idea? ¯\_(ツ)_/¯
+***** Special Usecase: Restore only with base backup
+- Usually you'd want fresh WAL etc. (that's the traditional continious backup)
+- But if you wanted more of the ~pg_restore~ kind of behavior with wal-g base backup
+  - Then even if you're running in standby mode, you can't run ~pg_ctl promote~, it'll give error that not runing in standby ()
+- The ~restore_command = 'wal-g wal-fetch %f %p'~ is absolutely useless. as it's used for continious archival and we not doing that here.
+- If you don't specify the ~standby.signal~ you'd get the following:
+  #+begin_src
+2024-12-10 17:10:48.788 UTC [28] HINT:  If you are restoring from a backup, touch "/srv/data/postgres/recovery.signal" and add required recovery options.
+If you are not restoring from a backup, try removing the file "/srv/data/postgres/backup_label".
+Be careful: removing "/srv/data/postgres/backup_label" will result in a corrupt cluster if restoring from a backup.
+  #+end_src
+- BUT
+  - basebackup itself need WAL for restoing too, WAL-G operates same. WAL is used for PITR, but even if you restoring to the time of backup (without PITR), you still need WAL.
+
+#+begin_quote
+So in summary, this usecase is not possible iiuc.
+#+end_quote
 ***** Make changes to ~postgresql.conf~ and ~$PGDATA~ for standby
 - Add ~standby.signal~ inside ~$PGDATA~, this will tell postgres to start in standby mode. If you don't specify this and yet have a ~restore_command~, pg will safely error out.
 - Update standby settings in ~postgresql.conf~
   #+begin_src diff
 --- a/workloads/nomad/pg/postgresql.conf
 +++ b/workloads/nomad/pg/postgresql.conf
--archive_mode = on		# enables archiving; off, on, or always
+-archive_mode = on		enables archiving; off, on, or always
 +archive_mode = off		# enables archiving; off, on, or always
 -#restore_command = ''		# command to use to restore an archived WAL file
 +restore_command = 'wal-g wal-fetch %f %p'
@@ -335,6 +356,10 @@ There is some confusion around whether to keep ~archive_mode~ on when running a 
 - After I verify, I manually re-set ~archive_command~ and re-trigger a base-backup from the new replica/recovered instance.
 - I am not sure what's the best approach is, just something that works for me.
 - Confusion: [[https://dba.stackexchange.com/questions/306490/failed-postgres-replication-from-master-to-standby][instance where setting archive_command]] messed things up, but  [[https://stackoverflow.com/questions/24007152/disabling-wal-archiving-during-pg-restore][this discussion]] recommending against it. (I think it's talking about disabling ~archive_command~ in the primary, whereas in my case I am talking about not having ~archive_command~ in the restore/standby instance)
+**** WAL generation
+- WAL segment size is 16MB hardcoded at buildtime
+- What happens when we do ~archive_mode~ set to ~on~
+  - high iops?
 ** Other notes/references
 *** TODO Aside on Backup ecosystem in Postgres (TODO)
 #+begin_quote
