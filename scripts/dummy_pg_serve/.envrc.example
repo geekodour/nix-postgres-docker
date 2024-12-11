@@ -1,0 +1,17 @@
+export PROJECT_ROOT=$PWD
+export PROJECT_DATA_DIR=$PWD/.data
+
+# pg local
+export PGDATA=$PROJECT_DATA_DIR/postgresql
+
+export PGHOST=localhost
+export PGPORT=7777
+export PGUSER=postgres
+export PGDATABASE=postgres
+# export PGPASSWORD=420
+
+# export GOOSE_DRIVER=postgres
+# export GOOSE_DBSTRING=postgresql://$PGUSER:$PGPASSWORD@$PGHOST:$PGPORT/$PGDATABASE
+
+export NIXPKGS_ALLOW_UNFREE=1
+use flake . --impure
