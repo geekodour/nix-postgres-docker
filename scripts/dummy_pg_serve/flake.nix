@@ -42,6 +42,12 @@
                 pkgs.pgcli
                 pkgs.goose
               ];
+
+              # NOTE: Sometimes you might need to manually:
+              #        ALTER USER postgres WITH PASSWORD '123';
+              #        and do,
+              #        host    all             all             0.0.0.0/0            trust
+              #        in pg_hba.conf
               shellHook = ''
                 mkdir -p $PGDATA
                 if [ -d $PGDATA ]; then
