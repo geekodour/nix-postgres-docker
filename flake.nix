@@ -32,8 +32,8 @@
           # vanilla pg images w extensions installed in the image itself
           pg_amd64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
-            imageDigest = "sha256:3848c4b97c37180ef2e81994199dab9811c7520ff8228026093d1ff4197cc118";
-            sha256 = "sha256-+6C8GTD1Nz7gJRLg9KBj940ZNJOAgSNg6hoRi3XzSUI=";
+            imageDigest = "sha256:9d02d5d34156da66a3351b4cc74d67a9b8b24ab86fec2ef0342c323cc3dbc2f5";
+            sha256 = "sha256-YWrREKbWh6ZKjQI9Omjgn2x6d/geGWhqaHAooKMVkjU=";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
             os = "linux";
@@ -41,8 +41,8 @@
           };
           pg_arm64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
-            imageDigest = "sha256:133b5c48d6a7a9475a4bd2ccf3a5ffe409311fd0531142a4ab02b43214c9714b";
-            sha256 = "sha256-kCcVc8YWXUS5f0MJjUaan0XItuq6QiL/C9OuxBVtF58=";
+            imageDigest = "sha256:69f7cd8eee014a98d20d96a73162acfef657881065a73efd7457333c5981cf48";
+            sha256 = "";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
             os = "linux";
