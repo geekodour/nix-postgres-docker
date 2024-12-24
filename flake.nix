@@ -30,6 +30,11 @@
           };
 
           # vanilla pg images w extensions installed in the image itself
+          # NOTE: How it works is currently is in 2 steps
+          # 1. We push the vanilla image
+          # 2. Then populate the sha digest manually
+          # 3. The ci build will fail with the correct sha mention we then again
+          #    manually fill that
           pg_amd64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
             imageDigest = "sha256:9d02d5d34156da66a3351b4cc74d67a9b8b24ab86fec2ef0342c323cc3dbc2f5";
@@ -42,7 +47,7 @@
           pg_arm64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
             imageDigest = "sha256:69f7cd8eee014a98d20d96a73162acfef657881065a73efd7457333c5981cf48";
-            sha256 = "";
+            sha256 = "sha256-0YUreh1bzsTRBeJ7l2eI3Yo3s7k+bILvNQqdUw8gBPU=";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
             os = "linux";
