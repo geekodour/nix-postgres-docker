@@ -37,7 +37,7 @@
           #    manually fill that
           pg_amd64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
-            imageDigest = "sha256:5bf520a0a3ee643cb2e3b1486b4ab86bee8c19989d9e0ca0e0c74e2f8b0a0324";
+            imageDigest = "sha256:68d21977bf871764106ee2c544a28c6f8bfe2f4483ea0162af4f31fd367ede85";
             sha256 = "sha256-pjcNOGn7uwTUb2rJ+er97cN7dRgC37jlxGgwv8xO+q0=";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
@@ -46,7 +46,7 @@
           };
           pg_arm64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
-            imageDigest = "sha256:891ba848f5bc98644b03741dd98d725ec72be5ff7cc953e9cf424814285396a1";
+            imageDigest = "sha256:1a0380d2b000d4ed15bbf2c74a9f164a7f5f51742f1741864b21544f91c13a38";
             sha256 = "sha256-pjcNOGn7uwTUb2rJ+er97cN7dRgC37jlxGgwv8xO+q0=";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
