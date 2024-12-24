@@ -47,7 +47,7 @@
           pg_arm64_w_ext = pkgs.dockerTools.pullImage {
             imageName = "geekodour/postgres_w_pg_cron";
             imageDigest = "sha256:1a0380d2b000d4ed15bbf2c74a9f164a7f5f51742f1741864b21544f91c13a38";
-            sha256 = "sha256-pjcNOGn7uwTUb2rJ+er97cN7dRgC37jlxGgwv8xO+q0=";
+            sha256 = "sha256-I3IekYPmRZARNKzuT58vZVM/rP1jhGB6LRwKzNLk1sM=";
             finalImageName = "postgres";
             finalImageTag = "16.2-bookworm";
             os = "linux";
