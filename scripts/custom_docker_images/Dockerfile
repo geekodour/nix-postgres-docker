@@ -5,5 +5,5 @@ FROM postgres:16.2-bullseye
 RUN apt-get update \
       && apt-get -y --no-install-recommends install \
     postgresql-16-cron \
-    postgresql-15-pgvector \
+    postgresql-16-pgvector \
     && rm -rf /var/lib/apt/lists/*
