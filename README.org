@@ -286,6 +286,7 @@ So in summary, this usecase is not possible iiuc.
 - After promoting you may want to remove/comment the ~restore_command~ config, it'll not be picked up anyway by postgres but better to comment it out imo.
 *** Standby Servers (Sync) (ONLY via Streaming Replication) (TODO)
 #+begin_quote
+- sync replication happens at commit level.
 - Synchronous standby servers cannot happen without postgres streaming replication protocol, hence won't work with WAL archival.
 - These can be either warm or hot
 #+end_quote
